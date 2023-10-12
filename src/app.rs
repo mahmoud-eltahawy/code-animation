@@ -49,8 +49,7 @@ pub fn App() -> impl IntoView {
     let current_lesson_key = Memo::new(move |_| {
         lessons_keys
             .get()
-            .map(|xs| xs.get(current_lesson_index.get()).cloned())
-            .flatten()
+            .and_then(|xs| xs.get(current_lesson_index.get()).cloned())
     });
     let current_lesson_path = Memo::new(move |_| {
         let lesson_key = current_lesson_key.get().map(|x| x.to_string());
@@ -59,8 +58,7 @@ pub fn App() -> impl IntoView {
         };
         let lesson_name = folder_config
             .get()
-            .map(|x| x.lessons.get(&key).cloned())
-            .flatten();
+            .and_then(|x| x.lessons.get(&key).cloned());
         let Some(name) = lesson_name else {
             return None::<PathBuf>;
         };
@@ -72,12 +70,12 @@ pub fn App() -> impl IntoView {
     });
     window_event_listener(ev::keypress, move |ev| match ev.code().as_str() {
         "KeyL" => current_lesson_index.update(|index| {
-            if last_lesson_index.get().is_some_and(|x| x > index.clone()) {
+            if last_lesson_index.get().is_some_and(|x| x > *index) {
                 *index += 1;
             }
         }),
         "KeyH" => current_lesson_index.update(|x| {
-            if x.clone() > 0 {
+            if *x > 0 {
                 *x -= 1
             }
         }),
@@ -113,9 +111,6 @@ pub fn App() -> impl IntoView {
         _ => logging::log!("Other key pressed"),
     });
 
-    // Effect::new(move |_| logging::log!("Folder : {:#?}", opened_folder.get()));
-    // Effect::new(move |_| logging::log!("Config : {:#?}", folder_config.get()));
-    // Effect::new(move |_| logging::log!("Indexs : {:#?}", lessons_keys.get()));
     Effect::new(move |_| logging::log!("Current Lesson Index : {:#?}", current_lesson_index.get()));
     Effect::new(move |_| logging::log!("Current Lesson Key : {:#?}", current_lesson_key.get()));
     Effect::new(move |_| logging::log!("Current Lesson path : {:#?}", current_lesson_path.get()));
