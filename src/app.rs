@@ -6,10 +6,13 @@ use tauri_sys::{dialog::FileDialogBuilder, tauri::invoke};
 
 use serde::{Deserialize, Serialize};
 
-const PRISM_SCRIPT: &str = include_str!("../prism.js");
 const GENERAL_STYLE: &str = include_str!("../styles.css");
-const PRISM_STYLE: &str = include_str!("../prism.css");
 const CONFIG_NAME: &str = "config.json";
+
+#[derive(Serialize)]
+struct Arg<'a> {
+    path: &'a str,
+}
 
 #[inline(always)]
 pub async fn open_folder() -> Option<PathBuf> {
@@ -80,10 +83,6 @@ pub fn App() -> impl IntoView {
             }
         }),
         "KeyO" => {
-            #[derive(Serialize)]
-            struct Arg<'a> {
-                path: &'a str,
-            }
             spawn_local(async move {
                 let Some(path) = open_folder().await else {
                     return;
@@ -111,40 +110,35 @@ pub fn App() -> impl IntoView {
         _ => logging::log!("Other key pressed"),
     });
 
-    Effect::new(move |_| logging::log!("Current Lesson Index : {:#?}", current_lesson_index.get()));
-    Effect::new(move |_| logging::log!("Current Lesson Key : {:#?}", current_lesson_key.get()));
-    Effect::new(move |_| logging::log!("Current Lesson path : {:#?}", current_lesson_path.get()));
-
-    let the_code = RwSignal::new(
-        r#"
-          fn main() {
-            println!("hello world");
-          }"#
-        .to_string(),
-    );
+    async fn read_file(path: Option<PathBuf>) -> String {
+        const OR: &str = r#"
+            fn main() {
+              println!("hello world");
+            }"#;
+        let Some(path) = path else {
+            return OR.to_string();
+        };
+        invoke::<_, String>(
+            "read_file",
+            &Arg {
+                path: path.display().to_string().as_str(),
+            },
+        )
+        .await
+        .unwrap_or(OR.to_string())
+    }
+    let the_code = Resource::new(move || current_lesson_path.get(), read_file);
 
     view! {
     <>
-    <Style>
-    {
-       String::from("") +
-       PRISM_STYLE +
-       GENERAL_STYLE
-    }
-    </Style>
-    <pre class="fullpage">
-      <code class="language-rust line-numbers">
+    <Style>{GENERAL_STYLE}</Style>
+    <pre>
+      <code>
       {
         move || the_code.get()
       }
       </code>
     </pre>
-    <script>
-    {
-      PRISM_SCRIPT
-    }
-    </script>
     </>
-
-      }
+    }
 }

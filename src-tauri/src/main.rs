@@ -14,7 +14,6 @@ struct Config {
 #[tauri::command]
 fn open_config(path: &str) -> Result<Config, String> {
     fn open(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
-        println!("called");
         let mut file = File::open(path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
@@ -25,9 +24,21 @@ fn open_config(path: &str) -> Result<Config, String> {
     open(path).map_err(|x| x.to_string())
 }
 
+#[tauri::command]
+fn read_file(path: &str) -> Result<String, String> {
+    fn open(path: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let mut file = File::open(path)?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)?;
+        Ok(content)
+    }
+
+    open(path).map_err(|x| x.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_config])
+        .invoke_handler(tauri::generate_handler![open_config, read_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
