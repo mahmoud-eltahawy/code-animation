@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-fn create_dark_theme() -> String {
+fn create_theme() -> String {
     let ts = ThemeSet::load_defaults();
     let dark_theme = &ts.themes["Solarized (dark)"];
     css_for_theme_with_class_style(dark_theme, ClassStyle::Spaced).unwrap()
@@ -22,7 +22,7 @@ fn file_write(content: String, path: &str) -> Result<(), std::io::Error> {
 fn main() -> Result<(), std::io::Error> {
     tauri_build::build();
 
-    file_write(create_dark_theme(), "../style.css")?;
+    file_write(create_theme(), "../style.css")?;
 
     Ok(())
 }

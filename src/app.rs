@@ -72,13 +72,18 @@ pub fn App() -> impl IntoView {
             path
         })
     });
-    let font_size = RwSignal::new(18);
+    let font_size = RwSignal::new(22);
     window_event_listener(ev::keypress, move |ev| {
         let key_code = ev.code();
         logging::log!("The Key : {}", key_code);
+
         match key_code.as_str() {
             "Equal" => font_size.update(|x| *x += 1),
             "Minus" => font_size.update(|x| *x -= 1),
+            "KeyQ" => {
+                opened_folder.set(None);
+                current_lesson_index.set(0);
+            }
             "KeyL" => current_lesson_index.update(|index| {
                 if last_lesson_index.get().is_some_and(|x| x > *index) {
                     *index += 1;
@@ -114,16 +119,15 @@ pub fn App() -> impl IntoView {
                     folder_config.set(config);
                 });
             }
-            _ => logging::log!("Other key pressed"),
+            _ => (),
         }
     });
 
     async fn read_file(path: Option<PathBuf>) -> String {
         const OR: &str = r#"
-<span class="source rust"><span class="comment line double-slash rust"><span class="punctuation definition comment rust">//</span> Rust source
-</span><span class="meta function rust"><span class="meta function rust"><span class="storage type function rust">fn</span> </span><span class="entity name function rust">main</span></span><span class="meta function rust"><span class="meta function parameters rust"><span class="punctuation section parameters begin rust">(</span></span><span class="meta function rust"><span class="meta function parameters rust"><span class="punctuation section parameters end rust">)</span></span></span></span><span class="meta function rust"> </span><span class="meta function rust"><span class="meta block rust"><span class="punctuation section block begin rust">{</span>
-<span class="support macro rust">println!</span><span class="meta group rust"><span class="punctuation section group begin rust">(</span></span><span class="meta group rust"><span class="string quoted double rust"><span class="punctuation definition string begin rust">&quot;</span>Hello World!<span class="punctuation definition string end rust">&quot;</span></span></span><span class="meta group rust"><span class="punctuation section group end rust">)</span></span><span class="punctuation terminator rust">;</span>
-</span><span class="meta block rust"><span class="punctuation section block end rust">}</span></span></span></span>
+<span class="source rust">
+<span class="support macro rust">println!</span><span class="meta group rust"><span class="punctuation section group begin rust">(</span></span><span class="meta group rust"><span class="string quoted double rust"><span class="punctuation definition string begin rust">&quot;</span>don,t panic<span class="punctuation definition string end rust">&quot;</span></span></span><span class="meta group rust"><span class="punctuation section group end rust">)</span></span><span class="punctuation terminator rust">;</span>
+
         "#;
         let Some(path) = path else {
             return OR.to_string();
@@ -161,7 +165,7 @@ pub fn App() -> impl IntoView {
             GENERAL_STYLE
         }</Style>
     <div class="container" style=font_size_style>
-        <pre id=CODE_BLOCK_ID class="code fullpage"></pre>
+        <pre id=CODE_BLOCK_ID class="code custom"></pre>
     </div>
     </>
     }

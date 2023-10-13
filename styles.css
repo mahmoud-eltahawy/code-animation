@@ -1,17 +1,17 @@
 html {
   margin: 0px;
   padding: 0px;
-  background-color: gray;
+  background-color: #282a36;
 }
 
 .container {
   text-align: center;
 }
 
-.fullpage {
+.custom {
+  background-color: transparent;
   text-align: left;
   display: inline-block;
   margin: 10px auto;
-  padding: 10px;
-  border-radius: 20px;
+  padding: 50px;
 }
