@@ -7,6 +7,7 @@ use tauri_sys::{dialog::FileDialogBuilder, tauri::invoke};
 use serde::{Deserialize, Serialize};
 
 const GENERAL_STYLE: &str = include_str!("../styles.css");
+const THEME_STYLE: &str = include_str!("../style.css");
 const CONFIG_NAME: &str = "config.json";
 
 #[derive(Serialize)]
@@ -112,9 +113,11 @@ pub fn App() -> impl IntoView {
 
     async fn read_file(path: Option<PathBuf>) -> String {
         const OR: &str = r#"
-            fn main() {
-              println!("hello world");
-            }"#;
+<span class="source rust"><span class="comment line double-slash rust"><span class="punctuation definition comment rust">//</span> Rust source
+</span><span class="meta function rust"><span class="meta function rust"><span class="storage type function rust">fn</span> </span><span class="entity name function rust">main</span></span><span class="meta function rust"><span class="meta function parameters rust"><span class="punctuation section parameters begin rust">(</span></span><span class="meta function rust"><span class="meta function parameters rust"><span class="punctuation section parameters end rust">)</span></span></span></span><span class="meta function rust"> </span><span class="meta function rust"><span class="meta block rust"><span class="punctuation section block begin rust">{</span>
+<span class="support macro rust">println!</span><span class="meta group rust"><span class="punctuation section group begin rust">(</span></span><span class="meta group rust"><span class="string quoted double rust"><span class="punctuation definition string begin rust">&quot;</span>Hello World!<span class="punctuation definition string end rust">&quot;</span></span></span><span class="meta group rust"><span class="punctuation section group end rust">)</span></span><span class="punctuation terminator rust">;</span>
+</span><span class="meta block rust"><span class="punctuation section block end rust">}</span></span></span></span>
+        "#;
         let Some(path) = path else {
             return OR.to_string();
         };
@@ -129,16 +132,26 @@ pub fn App() -> impl IntoView {
     }
     let the_code = Resource::new(move || current_lesson_path.get(), read_file);
 
+    const CODE_BLOCK_ID: &str = "code_id";
+
+    Effect::new(move |_| {
+        let Some(code) = the_code.get().map(|x| x) else {
+            return;
+        };
+        let Some(code_block) = document().get_element_by_id(CODE_BLOCK_ID) else {
+            return;
+        };
+        code_block.set_inner_html(&code);
+    });
+
     view! {
     <>
-    <Style>{GENERAL_STYLE}</Style>
-    <pre>
-      <code>
-      {
-        move || the_code.get()
-      }
-      </code>
-    </pre>
+    <Style>{
+            String::from("") +
+            THEME_STYLE +
+            GENERAL_STYLE
+        }</Style>
+    <pre id=CODE_BLOCK_ID class="code fullpage"></pre>
     </>
     }
 }
