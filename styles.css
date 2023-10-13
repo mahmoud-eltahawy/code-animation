@@ -1,9 +1,17 @@
 html {
-  font-size: 18px;
+  margin: 0px;
+  padding: 0px;
+  background-color: gray;
+}
+
+.container {
+  text-align: center;
 }
 
 .fullpage {
-  height: 100vh;
-  width: 100vw;
-  padding: 20%;
+  text-align: left;
+  display: inline-block;
+  margin: 10px auto;
+  padding: 10px;
+  border-radius: 20px;
 }

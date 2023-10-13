@@ -72,43 +72,50 @@ pub fn App() -> impl IntoView {
             path
         })
     });
-    window_event_listener(ev::keypress, move |ev| match ev.code().as_str() {
-        "KeyL" => current_lesson_index.update(|index| {
-            if last_lesson_index.get().is_some_and(|x| x > *index) {
-                *index += 1;
+    let font_size = RwSignal::new(18);
+    window_event_listener(ev::keypress, move |ev| {
+        let key_code = ev.code();
+        logging::log!("The Key : {}", key_code);
+        match key_code.as_str() {
+            "Equal" => font_size.update(|x| *x += 1),
+            "Minus" => font_size.update(|x| *x -= 1),
+            "KeyL" => current_lesson_index.update(|index| {
+                if last_lesson_index.get().is_some_and(|x| x > *index) {
+                    *index += 1;
+                }
+            }),
+            "KeyH" => current_lesson_index.update(|x| {
+                if *x > 0 {
+                    *x -= 1
+                }
+            }),
+            "KeyO" => {
+                spawn_local(async move {
+                    let Some(path) = open_folder().await else {
+                        return;
+                    };
+                    let mut config_path = path.clone();
+                    config_path.push(CONFIG_NAME);
+                    let config = match invoke::<_, Config>(
+                        "open_config",
+                        &Arg {
+                            path: config_path.display().to_string().as_str(),
+                        },
+                    )
+                    .await
+                    {
+                        Ok(config) => Some(config),
+                        Err(err) => {
+                            logging::log!("{}", err.to_string());
+                            None
+                        }
+                    };
+                    opened_folder.set(Some(path));
+                    folder_config.set(config);
+                });
             }
-        }),
-        "KeyH" => current_lesson_index.update(|x| {
-            if *x > 0 {
-                *x -= 1
-            }
-        }),
-        "KeyO" => {
-            spawn_local(async move {
-                let Some(path) = open_folder().await else {
-                    return;
-                };
-                let mut config_path = path.clone();
-                config_path.push(CONFIG_NAME);
-                let config = match invoke::<_, Config>(
-                    "open_config",
-                    &Arg {
-                        path: config_path.display().to_string().as_str(),
-                    },
-                )
-                .await
-                {
-                    Ok(config) => Some(config),
-                    Err(err) => {
-                        logging::log!("{}", err.to_string());
-                        None
-                    }
-                };
-                opened_folder.set(Some(path));
-                folder_config.set(config);
-            });
+            _ => logging::log!("Other key pressed"),
         }
-        _ => logging::log!("Other key pressed"),
     });
 
     async fn read_file(path: Option<PathBuf>) -> String {
@@ -144,6 +151,8 @@ pub fn App() -> impl IntoView {
         code_block.set_inner_html(&code);
     });
 
+    let font_size_style = move || format!("font-size: {}px;", font_size.get());
+
     view! {
     <>
     <Style>{
@@ -151,7 +160,9 @@ pub fn App() -> impl IntoView {
             THEME_STYLE +
             GENERAL_STYLE
         }</Style>
-    <pre id=CODE_BLOCK_ID class="code fullpage"></pre>
+    <div class="container" style=font_size_style>
+        <pre id=CODE_BLOCK_ID class="code fullpage"></pre>
+    </div>
     </>
     }
 }
