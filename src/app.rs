@@ -155,7 +155,7 @@ pub fn App() -> impl IntoView {
         code_block.set_inner_html(&code);
     });
 
-    let font_size_style = move || format!("font-size: {}px;", font_size.get());
+    let container_dynamic_style = move || format!("font-size: {}px;", font_size.get());
 
     view! {
     <>
@@ -164,8 +164,8 @@ pub fn App() -> impl IntoView {
             THEME_STYLE +
             GENERAL_STYLE
         }</Style>
-    <div class="container" style=font_size_style>
-        <pre id=CODE_BLOCK_ID class="code custom"></pre>
+    <div class="container" style=container_dynamic_style>
+        <pre id=CODE_BLOCK_ID class="code custom fade-in-text"></pre>
     </div>
     </>
     }
