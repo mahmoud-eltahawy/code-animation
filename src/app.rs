@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 use leptos::*;
 use leptos_meta::*;
@@ -123,36 +123,51 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    async fn read_file(path: Option<PathBuf>) -> String {
-        const OR: &str = r#"
+    async fn read_file(path: Option<PathBuf>) -> Vec<String> {
+        let or : Vec<String> = vec![r#"
 <span class="source rust">
 <span class="support macro rust">println!</span><span class="meta group rust"><span class="punctuation section group begin rust">(</span></span><span class="meta group rust"><span class="string quoted double rust"><span class="punctuation definition string begin rust">&quot;</span>don,t panic<span class="punctuation definition string end rust">&quot;</span></span></span><span class="meta group rust"><span class="punctuation section group end rust">)</span></span><span class="punctuation terminator rust">;</span>
 
-        "#;
+        "#.to_string()];
         let Some(path) = path else {
-            return OR.to_string();
+            return or;
         };
-        invoke::<_, String>(
+        invoke::<_, Vec<String>>(
             "read_file",
             &Arg {
                 path: path.display().to_string().as_str(),
             },
         )
         .await
-        .unwrap_or(OR.to_string())
+        .unwrap_or(or)
     }
     let the_code = Resource::new(move || current_lesson_path.get(), read_file);
 
     const CODE_BLOCK_ID: &str = "code_id";
 
     Effect::new(move |_| {
-        let Some(code) = the_code.get().map(|x| x) else {
+        let Some(code) = the_code.get() else {
             return;
         };
         let Some(code_block) = document().get_element_by_id(CODE_BLOCK_ID) else {
             return;
         };
-        code_block.set_inner_html(&code);
+        let code_block = Rc::from(code_block);
+        code_block.set_inner_html("");
+        for (index, x) in code.into_iter().enumerate() {
+            set_timeout(
+                {
+                    let code_block = code_block.clone();
+                    move || {
+                        let new_content = x + "<br/>";
+                        code_block
+                            .insert_adjacent_html("beforeend", &new_content)
+                            .unwrap_or(());
+                    }
+                },
+                std::time::Duration::from_millis(index as u64 * 400),
+            )
+        }
     });
 
     let container_dynamic_style = move || format!("font-size: {}rem;", font_size.get());

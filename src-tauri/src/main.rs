@@ -30,29 +30,44 @@ fn open_config(path: &str) -> Result<Config, String> {
     open(path).map_err(|x| x.to_string())
 }
 
-fn generate_highlighted_code(code_rs: &str) -> String {
+fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, String> {
     let ss = SyntaxSet::load_defaults_newlines();
-    let sr_rs = ss.find_syntax_by_extension("rs").unwrap();
+    let Some(sr_rs) = ss.find_syntax_by_extension(extension) else {
+        return Err("syntax does not exist".to_string());
+    };
     let mut rs_html_generator =
         ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code_rs) {
         rs_html_generator
             .parse_html_for_line_which_includes_newline(line)
-            .unwrap();
+            .unwrap_or_default();
     }
-    rs_html_generator.finalize()
+    Ok(rs_html_generator.finalize())
 }
 
 #[tauri::command]
-fn read_file(path: &str) -> Result<String, String> {
-    fn open(path: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn read_file(path: &str) -> Result<Vec<String>, String> {
+    let Some(name_exten) = std::path::Path::new(path)
+        .file_name()
+        .and_then(|x| x.to_str().map(|x| x.split(".")))
+    else {
+        return Err("file name or extension problem".to_string());
+    };
+    let [_, extension] = name_exten.into_iter().collect::<Vec<_>>()[..] else {
+        return Err("extension problem".to_string());
+    };
+    fn open(path: &str, extension: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let mut file = File::open(path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
-        Ok(generate_highlighted_code(&content))
+        let code_lines = content
+            .lines()
+            .flat_map(|line| generate_html_from_code(&line, extension))
+            .collect::<Vec<_>>();
+        Ok(code_lines)
     }
 
-    open(path).map_err(|x| x.to_string())
+    open(path, extension).map_err(|x| x.to_string())
 }
 
 fn main() {

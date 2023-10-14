@@ -22,20 +22,24 @@
 }
 
 .begin {
+  animation-timing-function: ease-in-out;
   animation: getSmaller 1s;
 }
 
 .end {
+  animation-timing-function: ease-in-out;
   animation: getBiger 1s;
 }
 
 .terminator,
 .function,
 .string {
+  animation-timing-function: ease-in-out;
   animation: fadeIn 2s;
 }
 
 .macro {
+  animation-timing-function: ease-in-out;
   animation: shrink 1.5s;
 }
 
