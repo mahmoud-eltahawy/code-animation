@@ -1,7 +1,12 @@
-html {
+* {
   margin: 0px;
   padding: 0px;
+}
+
+:root {
+  font-family: Firacode, Inter, Avenir, Helvetica, Arial, sans-serif;
   background-color: #282a36;
+  font-size: 22px;
 }
 
 .container {
@@ -16,8 +21,22 @@ html {
   padding: 50px;
 }
 
-.source {
-  animation: fadeIn 5s;
+.begin {
+  animation: getSmaller 1s;
+}
+
+.end {
+  animation: getBiger 1s;
+}
+
+.terminator,
+.function,
+.string {
+  animation: fadeIn 2s;
+}
+
+.macro {
+  animation: shrink 1.5s;
 }
 
 @keyframes fadeIn {
@@ -27,5 +46,40 @@ html {
 
   100% {
     opacity: 1;
+  }
+}
+
+
+@keyframes getBiger {
+  0% {
+    line-height: 0.1;
+    font-size: 0.1rem;
+  }
+
+  100% {
+    line-height: 1.6;
+    font-size: 1rem;
+  }
+}
+
+@keyframes getSmaller {
+  0% {
+    line-height: 3.6;
+    font-size: 2rem;
+  }
+
+  100% {
+    line-height: 1.6;
+    font-size: 1rem;
+  }
+}
+
+@keyframes shrink {
+  0% {
+    letter-spacing: .6rem;
+  }
+
+  100% {
+    letter-spacing: normal;
   }
 }

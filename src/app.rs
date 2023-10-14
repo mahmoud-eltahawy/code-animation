@@ -72,14 +72,14 @@ pub fn App() -> impl IntoView {
             path
         })
     });
-    let font_size = RwSignal::new(22);
+    let font_size = RwSignal::new(1.0);
     window_event_listener(ev::keypress, move |ev| {
         let key_code = ev.code();
         logging::log!("The Key : {}", key_code);
 
         match key_code.as_str() {
-            "Equal" => font_size.update(|x| *x += 1),
-            "Minus" => font_size.update(|x| *x -= 1),
+            "Equal" => font_size.update(|x| *x += 0.05),
+            "Minus" => font_size.update(|x| *x -= 0.05),
             "KeyQ" => {
                 opened_folder.set(None);
                 current_lesson_index.set(0);
@@ -155,7 +155,7 @@ pub fn App() -> impl IntoView {
         code_block.set_inner_html(&code);
     });
 
-    let container_dynamic_style = move || format!("font-size: {}px;", font_size.get());
+    let container_dynamic_style = move || format!("font-size: {}rem;", font_size.get());
 
     view! {
     <>
@@ -165,7 +165,7 @@ pub fn App() -> impl IntoView {
             GENERAL_STYLE
         }</Style>
     <div class="container" style=container_dynamic_style>
-        <pre id=CODE_BLOCK_ID class="code custom fade-in-text"></pre>
+        <pre id=CODE_BLOCK_ID class="code custom"></pre>
     </div>
     </>
     }
