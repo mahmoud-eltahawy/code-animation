@@ -62,6 +62,7 @@ fn read_file(path: &str) -> Result<Vec<String>, String> {
         file.read_to_string(&mut content)?;
         let code_lines = content
             .lines()
+            .map(|line| line.to_string() + "\n")
             .flat_map(|line| generate_html_from_code(&line, extension))
             .collect::<Vec<_>>();
         Ok(code_lines)

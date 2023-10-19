@@ -152,7 +152,7 @@ function App() {
     code_node.innerHTML = "";
     for(let i = 0; i < code.length; i++) {
       setTimeout(() => {
-        code_node?.insertAdjacentHTML("beforeend",code![i]  + "<br/>");
+        code_node?.insertAdjacentHTML("beforeend",code![i]);
       },i * 400);
     }
   })

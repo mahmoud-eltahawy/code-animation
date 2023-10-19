@@ -375,17 +375,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ca"
-version = "0.0.0"
-dependencies = [
- "serde",
- "serde_json",
- "syntect",
- "tauri",
- "tauri-build",
-]
-
-[[package]]
 name = "cairo-rs"
 version = "0.15.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -511,6 +500,17 @@ dependencies = [
  "core-graphics-types",
  "libc",
  "objc",
+]
+
+[[package]]
+name = "code-animation"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "syntect",
+ "tauri",
+ "tauri-build",
 ]
 
 [[package]]
