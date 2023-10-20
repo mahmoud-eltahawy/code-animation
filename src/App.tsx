@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, untrack } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal} from "solid-js";
 import "./App.css";
 import "./styles.css";
 import { invoke } from "@tauri-apps/api";
@@ -140,7 +140,7 @@ function App() {
 
   const [the_code] = createResource(() => current_lesson_path(), read_file);
 
-  let lines_number = 0;
+  let bigest_lines_number = 0;
 
   createEffect(() => {
     let code = the_code();
@@ -152,19 +152,30 @@ function App() {
       return;
     }
     const line_what = (i: number) => `CODE_LINE__${i}`;
-    for(let i = lines_number; i >= 0; i--) {
-      setTimeout(() => {
-        let child = document.getElementById(line_what(i));
-        if (child) {
-          code_node!.removeChild(child);
-        }
-      },i * 200);
+    let current_lines_number = code.length;
+    if(bigest_lines_number < current_lines_number){
+      bigest_lines_number = current_lines_number;
+    } else {
+      for(let i = current_lines_number; i <= bigest_lines_number; i++) {
+          let child = document.getElementById(line_what(i));
+          if (child) {
+            code_node!.removeChild(child);
+          } else {
+            bigest_lines_number = i;
+            break;
+          }
+      }
     }
-    for(let i = 0; i < code.length; i++) {
+    for(let i = 0; i < current_lines_number; i++) {
+      const line_id = line_what(i);
+      let old_line = document.getElementById(line_id);
       setTimeout(() => {
-        lines_number = i;
-        let line = `<span id="${line_what(i)}">${code![i]}</span>`;
-        code_node?.insertAdjacentHTML("beforeend",line);
+        if(old_line) {
+          old_line.innerHTML = code![i];
+        } else {
+          let line = `<span id="${line_id}">${code![i]}</span>`;
+          code_node?.insertAdjacentHTML("beforeend",line);
+        }
       },i * 400);
     }
   })
