@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, untrack } from "solid-js";
 import "./App.css";
 import "./styles.css";
 import { invoke } from "@tauri-apps/api";
@@ -140,6 +140,8 @@ function App() {
 
   const [the_code] = createResource(() => current_lesson_path(), read_file);
 
+  let lines_number = 0;
+
   createEffect(() => {
     let code = the_code();
     if(!code) {
@@ -149,10 +151,20 @@ function App() {
     if(!code_node) {
       return;
     }
-    code_node.innerHTML = "";
+    const line_what = (i: number) => `CODE_LINE__${i}`;
+    for(let i = lines_number; i >= 0; i--) {
+      setTimeout(() => {
+        let child = document.getElementById(line_what(i));
+        if (child) {
+          code_node!.removeChild(child);
+        }
+      },i * 200);
+    }
     for(let i = 0; i < code.length; i++) {
       setTimeout(() => {
-        code_node?.insertAdjacentHTML("beforeend",code![i]);
+        lines_number = i;
+        let line = `<span id="${line_what(i)}">${code![i]}</span>`;
+        code_node?.insertAdjacentHTML("beforeend",line);
       },i * 400);
     }
   })
