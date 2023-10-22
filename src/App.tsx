@@ -9,20 +9,23 @@ import "./styles.css";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
 
+type Option<T> = T | null;
+
 type Config = {
   name: string;
   lessons: object; // Map<string,string>,
 };
 
-const CODE_BLOCK_ID = "code_id";
 const CONFIG_NAME = "config.json";
+
+const PRE_CODE_BLOCK = document.getElementById("code")!;
 
 async function opene_folder() {
   return await open({
     title: "choose lesson",
     directory: true,
     multiple: false,
-  }) as string | null;
+  }) as Option<string>;
 }
 
 function make_line_id(index: number) {
@@ -39,7 +42,7 @@ function repair_next_lines_ids(old_line: HTMLElement) {
 }
 
 function fill_ids_gaps() {
-  const spans = document.getElementById(CODE_BLOCK_ID)!.children;
+  const spans = PRE_CODE_BLOCK.children;
   let i = 0;
   for (const span of spans) {
     span.setAttribute("id", make_line_id(i));
@@ -47,24 +50,24 @@ function fill_ids_gaps() {
   }
 }
 
-async function read_file(path: string | null) {
+async function read_file(path: Option<string>) {
   if (!path) {
-    return new Map() as Map<string, string | null>;
+    return new Map() as Map<string, Option<string>>;
   }
   try {
     const result = await invoke<object>(
       "read_file",
       { path },
     );
-    return new Map(Object.entries(result)) as Map<string, string | null>;
+    return new Map(Object.entries(result)) as Map<string, Option<string>>;
   } catch (_err) {
-    return new Map() as Map<string, string | null>;
+    return new Map() as Map<string, Option<string>>;
   }
 }
 
 function App() {
-  const [opened_folder, set_opened_folder] = createSignal<string | null>(null);
-  const [folder_config, set_folder_config] = createSignal<Config | null>(null);
+  const [opened_folder, set_opened_folder] = createSignal<Option<string>>(null);
+  const [folder_config, set_folder_config] = createSignal<Option<Config>>(null);
   const lessons_keys = createMemo((_) => {
     const fc = folder_config();
     const indexs: number[] = [];
@@ -91,7 +94,7 @@ function App() {
     if (!ln) {
       return null;
     }
-    const lesson_name = ln.lessons[lesson_key] as string | null;
+    const lesson_name = ln.lessons[lesson_key] as Option<string>;
     if (!lesson_name) {
       return null;
     }
@@ -173,24 +176,19 @@ function App() {
       return;
     }
     let gap_exist = false;
-    const code_node = document.getElementById(CODE_BLOCK_ID)!;
     for (const [key, new_line] of code) {
       const key_number = +key;
       const line_id = make_line_id(key_number);
       const old_line = document.getElementById(line_id);
-      if (new_line) {
-        const line = `<span id="${line_id}">${new_line}</span>`;
-        if (old_line) {
-          old_line.insertAdjacentHTML("beforebegin", line);
-          repair_next_lines_ids(old_line);
-        } else {
-          code_node.insertAdjacentHTML("beforeend", line);
-        }
-      } else {
-        if (old_line) {
-          old_line.remove();
-          gap_exist = true;
-        }
+      const line = `<span id="${line_id}">${new_line}</span>`;
+      if (new_line && old_line) {
+        old_line.insertAdjacentHTML("beforebegin", line);
+        repair_next_lines_ids(old_line);
+      } else if (new_line && !old_line) {
+        PRE_CODE_BLOCK.insertAdjacentHTML("beforeend", line);
+      } else if (!new_line && old_line) {
+        old_line.remove();
+        gap_exist = true;
       }
     }
     if (gap_exist) {
@@ -198,15 +196,11 @@ function App() {
     }
   });
 
-  const containerDynamicStyle = () => `font-size: ${font_size()}rem;`;
-
-  return (
-    <pre
-      id={CODE_BLOCK_ID}
-      class="code custom"
-      style={containerDynamicStyle()}
-    ></pre>
+  createEffect(() =>
+    PRE_CODE_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
   );
+
+  return <></>;
 }
 
 export default App;
