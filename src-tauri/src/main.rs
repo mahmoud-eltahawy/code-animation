@@ -5,6 +5,7 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 
+use similar::{utils::diff_lines, Algorithm, ChangeTag};
 use syntect::{
     html::{ClassStyle, ClassedHTMLGenerator},
     parsing::SyntaxSet,
@@ -45,8 +46,10 @@ fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, Str
     Ok(rs_html_generator.finalize())
 }
 
+static mut OLD_LINES: String = String::new();
+
 #[tauri::command]
-fn read_file(path: &str) -> Result<Vec<String>, String> {
+fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
     let Some(name_exten) = std::path::Path::new(path)
         .file_name()
         .and_then(|x| x.to_str().map(|x| x.split(".")))
@@ -56,19 +59,30 @@ fn read_file(path: &str) -> Result<Vec<String>, String> {
     let [_, extension] = name_exten.into_iter().collect::<Vec<_>>()[..] else {
         return Err("extension problem".to_string());
     };
-    fn open(path: &str, extension: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    fn open(path: &str) -> Result<String, Box<dyn std::error::Error>> {
         let mut file = File::open(path)?;
         let mut content = String::new();
         file.read_to_string(&mut content)?;
-        let code_lines = content
-            .lines()
-            .map(|line| line.to_string() + "\n")
-            .flat_map(|line| generate_html_from_code(&line, extension))
-            .collect::<Vec<_>>();
-        Ok(code_lines)
+        Ok(content)
     }
 
-    open(path, extension).map_err(|x| x.to_string())
+    let new_lines = open(path).unwrap_or_default();
+    unsafe {
+        let r = diff_lines(Algorithm::Myers, &OLD_LINES, &new_lines)
+            .into_iter()
+            .enumerate()
+            .flat_map(|(index, (tag, text))| match tag {
+                ChangeTag::Delete => Some((index, None)),
+                ChangeTag::Insert => match generate_html_from_code(&text, extension) {
+                    Ok(text) => Some((index, Some(text))),
+                    Err(_) => None,
+                },
+                ChangeTag::Equal => None,
+            })
+            .collect::<HashMap<_, _>>();
+        OLD_LINES = new_lines.clone();
+        return Ok(r);
+    }
 }
 
 fn main() {

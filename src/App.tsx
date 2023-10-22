@@ -1,104 +1,129 @@
-import { createEffect, createMemo, createResource, createSignal} from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+} from "solid-js";
 import "./App.css";
 import "./styles.css";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
 
 type Config = {
-  name : string,
-  lessons : Object// Map<string,string>,
-}
+  name: string;
+  lessons: object; // Map<string,string>,
+};
 
 const CODE_BLOCK_ID = "code_id";
 const CONFIG_NAME = "config.json";
 
 async function opene_folder() {
   return await open({
-    title:"choose lesson",
-    directory:true,
-    multiple:false
+    title: "choose lesson",
+    directory: true,
+    multiple: false,
   }) as string | null;
 }
 
-const BASIC_MESSAGE = [`
-<span class="source rust">
-<span class="support macro rust">println!</span><span class="meta group rust"><span class="punctuation section group begin rust">(</span></span><span class="meta group rust"><span class="string quoted double rust"><span class="punctuation definition string begin rust">&quot;</span>don,t panic<span class="punctuation definition string end rust">&quot;</span></span></span><span class="meta group rust"><span class="punctuation section group end rust">)</span></span><span class="punctuation terminator rust">;</span>
-`];
+function make_line_id(index: number) {
+  return `CODE_LINE-${index}`;
+}
+function repair_next_lines_ids(old_line: HTMLElement) {
+  const id = old_line.getAttribute("id")!;
+  const index = +id.split("-").at(1)!;
+  const next_line = document.getElementById(make_line_id(index + 1));
+  if (next_line) {
+    repair_next_lines_ids(next_line);
+  }
+  old_line.setAttribute("id", make_line_id(index + 1));
+}
+
+function fill_ids_gaps() {
+  const spans = document.getElementById(CODE_BLOCK_ID)!.children;
+  let i = 0;
+  for (const span of spans) {
+    span.setAttribute("id", make_line_id(i));
+    i++;
+  }
+}
 
 async function read_file(path: string | null) {
-  if(!path) {
-    return BASIC_MESSAGE;
+  if (!path) {
+    return new Map() as Map<string, string | null>;
   }
   try {
-    return await invoke<string[]>(
-        "read_file",
-        {path},
+    const result = await invoke<object>(
+      "read_file",
+      { path },
     );
-  } catch(_err) {
-    return BASIC_MESSAGE;
+    return new Map(Object.entries(result)) as Map<string, string | null>;
+  } catch (_err) {
+    return new Map() as Map<string, string | null>;
   }
 }
 
 function App() {
-  const [opened_folder,set_opened_folder] = createSignal<string | null>(null);
-  const [folder_config,set_folder_config] = createSignal<Config | null>(null);
+  const [opened_folder, set_opened_folder] = createSignal<string | null>(null);
+  const [folder_config, set_folder_config] = createSignal<Config | null>(null);
   const lessons_keys = createMemo((_) => {
     const fc = folder_config();
-    let indexs : number[] = [];
-    if(fc) {
+    const indexs: number[] = [];
+    if (fc) {
       for (const key of Object.keys(fc.lessons)) {
         indexs.push(+key);
-      };
-      indexs.sort((x,y) =>  x - y);
+      }
+      indexs.sort((x, y) => x - y);
     }
     return indexs;
   });
   const last_lesson_index = createMemo((_) => lessons_keys().length - 1);
-  const [current_lesson_index,set_current_lesson_index] = createSignal(0);
-  const current_lesson_key = createMemo((_) => lessons_keys().at(current_lesson_index()));
+  const [current_lesson_index, set_current_lesson_index] = createSignal(0);
+  const current_lesson_key = createMemo((_) =>
+    lessons_keys().at(current_lesson_index())
+  );
   const current_lesson_path = createMemo((_) => {
-    let lk = current_lesson_key();
+    const lk = current_lesson_key();
     if (!lk) {
       return null;
     }
-    let lesson_key = lk.toString();
-    let ln = folder_config();
+    const lesson_key = lk.toString();
+    const ln = folder_config();
     if (!ln) {
       return null;
     }
-    let lesson_name = ln.lessons[lesson_key] as string | null;
+    const lesson_name = ln.lessons[lesson_key] as string | null;
     if (!lesson_name) {
       return null;
     }
-    let path = opened_folder();
+    const path = opened_folder();
     if (path) {
-      return path + "/" + lesson_name
+      return path + "/" + lesson_name;
     } else {
       return null;
     }
   });
-  let [font_size,set_font_size] = createSignal(1.0);
+  const [font_size, set_font_size] = createSignal(1.0);
   addEventListener("keypress", async (ev) => {
-    let key_code = ev.code;
-    console.log(key_code)
+    const key_code = ev.code;
+    console.log(key_code);
 
     switch (key_code) {
-      case "Equal" : {
+      case "Equal": {
         set_font_size((x) => x + 0.05);
         break;
       }
-      case "Minus" : {
+      case "Minus": {
         set_font_size((x) => x - 0.05);
         break;
       }
-      case "KeyQ" : {
-          set_opened_folder(null);
-          set_current_lesson_index(0);
-          break;
+      case "KeyQ": {
+        set_opened_folder(null);
+        set_current_lesson_index(0);
+        break;
       }
-      case "KeyL" : {
+      case "KeyL": {
         set_current_lesson_index((index) => {
-          let lli = last_lesson_index();
+          const lli = last_lesson_index();
           if (lli && lli > index) {
             return index + 1;
           } else {
@@ -107,32 +132,34 @@ function App() {
         });
         break;
       }
-      case "KeyH" : {
-        set_current_lesson_index((x) => {
-          if (x > 0) {
-            return x - 1;
+      case "KeyH": {
+        set_current_lesson_index((index) => {
+          if (index > 0) {
+            return index - 1;
           } else {
-            return x;
+            return index;
           }
         });
         break;
       }
-      case "KeyO" : {
-        let path = await opene_folder();
-        if(!path) {
+      case "KeyO": {
+        const path = await opene_folder();
+        if (!path) {
           return;
         }
-        let config_path = path + "/" + CONFIG_NAME;
+        const config_path = path + "/" + CONFIG_NAME;
         try {
-          let config = await invoke<Config>("open_config",{path:config_path});
+          const config = await invoke<Config>("open_config", {
+            path: config_path,
+          });
           set_opened_folder(path);
           set_folder_config(config);
         } catch (err) {
           console.log(err);
         }
         break;
-      } 
-      default : {
+      }
+      default: {
         break;
       }
     }
@@ -140,54 +167,45 @@ function App() {
 
   const [the_code] = createResource(() => current_lesson_path(), read_file);
 
-  let bigest_lines_number = 0;
-
   createEffect(() => {
-    let code = the_code();
-    if(!code) {
+    const code = the_code();
+    if (!code) {
       return;
     }
-    let code_node = document.getElementById(CODE_BLOCK_ID);
-    if(!code_node) {
-      return;
-    }
-    const line_what = (i: number) => `CODE_LINE__${i}`;
-    let current_lines_number = code.length;
-    if(bigest_lines_number < current_lines_number){
-      bigest_lines_number = current_lines_number;
-    } else {
-      for(let i = current_lines_number; i <= bigest_lines_number; i++) {
-          let child = document.getElementById(line_what(i));
-          if (child) {
-            code_node!.removeChild(child);
-          } else {
-            bigest_lines_number = i;
-            break;
-          }
+    let gap_exist = false;
+    const code_node = document.getElementById(CODE_BLOCK_ID)!;
+    for (const [key, new_line] of code) {
+      const key_number = +key;
+      const line_id = make_line_id(key_number);
+      const old_line = document.getElementById(line_id);
+      if (new_line) {
+        const line = `<span id="${line_id}">${new_line}</span>`;
+        if (old_line) {
+          old_line.insertAdjacentHTML("beforebegin", line);
+          repair_next_lines_ids(old_line);
+        } else {
+          code_node.insertAdjacentHTML("beforeend", line);
+        }
+      } else {
+        if (old_line) {
+          old_line.remove();
+          gap_exist = true;
+        }
       }
     }
-    for(let i = 0; i < current_lines_number; i++) {
-      const line_id = line_what(i);
-      let old_line = document.getElementById(line_id);
-      setTimeout(() => {
-        if(old_line) {
-          old_line.innerHTML = code![i];
-        } else {
-          let line = `<span id="${line_id}">${code![i]}</span>`;
-          code_node?.insertAdjacentHTML("beforeend",line);
-        }
-      },i * 400);
+    if (gap_exist) {
+      fill_ids_gaps();
     }
-  })
+  });
 
-  
   const containerDynamicStyle = () => `font-size: ${font_size()}rem;`;
 
   return (
-      <pre
-        id={CODE_BLOCK_ID} 
-        class="code custom"  
-        style={containerDynamicStyle()}></pre>
+    <pre
+      id={CODE_BLOCK_ID}
+      class="code custom"
+      style={containerDynamicStyle()}
+    ></pre>
   );
 }
 
