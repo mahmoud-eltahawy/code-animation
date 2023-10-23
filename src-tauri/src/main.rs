@@ -1,5 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use global_hotkey::{
+    hotkey::{Code, HotKey, Modifiers},
+    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
+};
+use tauri::Manager;
 
 use std::{collections::HashMap, fs::File, io::Read};
 
@@ -52,7 +57,7 @@ static mut OLD_LINES: String = String::new();
 fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
     let Some(name_exten) = std::path::Path::new(path)
         .file_name()
-        .and_then(|x| x.to_str().map(|x| x.split(".")))
+        .and_then(|x| x.to_str().map(|x| x.split('.')))
     else {
         return Err("file name or extension problem".to_string());
     };
@@ -73,7 +78,7 @@ fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
             .enumerate()
             .flat_map(|(index, (tag, text))| match tag {
                 ChangeTag::Delete => Some((index, None)),
-                ChangeTag::Insert => match generate_html_from_code(&text, extension) {
+                ChangeTag::Insert => match generate_html_from_code(text, extension) {
                     Ok(text) => Some((index, Some(text))),
                     Err(_) => None,
                 },
@@ -81,13 +86,58 @@ fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
             })
             .collect::<HashMap<_, _>>();
         OLD_LINES = new_lines.clone();
-        return Ok(r);
+        Ok(r)
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let keys_manager = GlobalHotKeyManager::new()?;
+
+    let open_lesson = HotKey::new(None, Code::KeyO);
+    let quit_lesson = HotKey::new(None, Code::KeyQ);
+    let font_increase = HotKey::new(None, Code::Equal);
+    let font_decrease = HotKey::new(None, Code::Minus);
+    let next_snippet = HotKey::new(None, Code::KeyL);
+    let previous_snippet = HotKey::new(None, Code::KeyH);
+    let next_snippet_stacked = HotKey::new(Some(Modifiers::SHIFT), Code::KeyL);
+
+    keys_manager.register_all(&[
+        open_lesson,
+        quit_lesson,
+        font_increase,
+        font_decrease,
+        next_snippet,
+        previous_snippet,
+        next_snippet_stacked,
+    ])?;
+
     tauri::Builder::default()
+        .setup(move |app| {
+            let main_window = app.get_window("main").unwrap();
+            std::thread::spawn(move || loop {
+                if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+                    if event.state == HotKeyState::Pressed {
+                        if event.id == open_lesson.id() {
+                            main_window.emit(stringify!(open_lesson), ()).unwrap();
+                        } else if event.id == quit_lesson.id() {
+                            main_window.emit(stringify!(quit_lesson), ()).unwrap();
+                        } else if event.id == next_snippet.id() {
+                            main_window.emit(stringify!(next_snippet), ()).unwrap();
+                        } else if event.id == previous_snippet.id() {
+                            main_window.emit(stringify!(previous_snippet), ()).unwrap();
+                        } else if event.id == font_increase.id() {
+                            main_window.emit(stringify!(font_increase), ()).unwrap();
+                        } else if event.id == font_decrease.id() {
+                            main_window.emit(stringify!(font_decrease), ()).unwrap();
+                        }
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![open_config, read_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    Ok(())
 }

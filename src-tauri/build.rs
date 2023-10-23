@@ -22,7 +22,7 @@ fn file_write(content: String, path: &str) -> Result<(), std::io::Error> {
 fn main() -> Result<(), std::io::Error> {
     tauri_build::build();
 
-    file_write(create_theme(), "../src/App.css")?;
+    file_write(create_theme(), "../App.css")?;
 
     Ok(())
 }

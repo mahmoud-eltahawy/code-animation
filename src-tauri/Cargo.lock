@@ -284,6 +284,9 @@ name = "bitflags"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "block"
@@ -506,6 +509,7 @@ dependencies = [
 name = "code-animation"
 version = "0.0.0"
 dependencies = [
+ "global-hotkey",
  "serde",
  "serde_json",
  "similar",
@@ -1289,6 +1293,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
+name = "global-hotkey"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2899bade0bee130eb5e6b839601b48dcb744d8079db84a82dc6b5c64b3ff5d3"
+dependencies = [
+ "crossbeam-channel",
+ "keyboard-types",
+ "once_cell",
+ "thiserror",
+ "windows-sys 0.48.0",
+ "x11-dl",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1740,6 +1758,17 @@ dependencies = [
  "serde_json",
  "thiserror",
  "treediff",
+]
+
+[[package]]
+name = "keyboard-types"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b750dcadc39a09dbadd74e118f6dd6598df77fa01df0cfcdc52c28dece74528a"
+dependencies = [
+ "bitflags 2.4.1",
+ "serde",
+ "unicode-segmentation",
 ]
 
 [[package]]

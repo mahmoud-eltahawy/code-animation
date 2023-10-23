@@ -4,10 +4,9 @@ import {
   createResource,
   createSignal,
 } from "solid-js";
-import "./App.css";
-import "./styles.css";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
+import { listen } from "@tauri-apps/api/event";
 
 type Option<T> = T | null;
 
@@ -65,22 +64,71 @@ async function read_file(path: Option<string>) {
   }
 }
 
-function App() {
-  const [opened_folder, set_opened_folder] = createSignal<Option<string>>(null);
-  const [folder_config, set_folder_config] = createSignal<Option<Config>>(null);
-  const lessons_keys = createMemo((_) => {
-    const fc = folder_config();
-    const indexs: number[] = [];
-    if (fc) {
-      for (const key of Object.keys(fc.lessons)) {
-        indexs.push(+key);
-      }
-      indexs.sort((x, y) => x - y);
+const [opened_folder, set_opened_folder] = createSignal<Option<string>>(null);
+const [folder_config, set_folder_config] = createSignal<Option<Config>>(null);
+const lessons_keys = createMemo((_) => {
+  const fc = folder_config();
+  const indexs: number[] = [];
+  if (fc) {
+    for (const key of Object.keys(fc.lessons)) {
+      indexs.push(+key);
     }
-    return indexs;
-  });
-  const last_lesson_index = createMemo((_) => lessons_keys().length - 1);
-  const [current_lesson_index, set_current_lesson_index] = createSignal(0);
+    indexs.sort((x, y) => x - y);
+  }
+  return indexs;
+});
+
+const last_lesson_index = createMemo((_) => lessons_keys().length - 1);
+const [current_lesson_index, set_current_lesson_index] = createSignal(0);
+
+listen("next_snippet", () =>
+  set_current_lesson_index((index) => {
+    const lli = last_lesson_index();
+    if (lli && lli > index) {
+      return index + 1;
+    } else {
+      return index;
+    }
+  }));
+
+listen("previous_snippet", () =>
+  set_current_lesson_index((index) => {
+    if (index > 0) {
+      return index - 1;
+    } else {
+      return index;
+    }
+  }));
+
+const [font_size, set_font_size] = createSignal(1.0);
+
+listen("font_increase", () => set_font_size((x) => x + 0.05));
+
+listen("font_decrease", () => set_font_size((x) => x - 0.05));
+
+listen("open_lesson", async () => {
+  const path = await opene_folder();
+  if (!path) {
+    return;
+  }
+  const config_path = path + "/" + CONFIG_NAME;
+  try {
+    const config = await invoke<Config>("open_config", {
+      path: config_path,
+    });
+    set_opened_folder(path);
+    set_folder_config(config);
+  } catch (err) {
+    console.log(err);
+  }
+});
+
+listen("quit_lesson", () => {
+  set_opened_folder(null);
+  set_current_lesson_index(0);
+});
+
+function App() {
   const current_lesson_key = createMemo((_) =>
     lessons_keys().at(current_lesson_index())
   );
@@ -103,68 +151,6 @@ function App() {
       return path + "/" + lesson_name;
     } else {
       return null;
-    }
-  });
-  const [font_size, set_font_size] = createSignal(1.0);
-  addEventListener("keypress", async (ev) => {
-    const key_code = ev.code;
-    console.log(key_code);
-
-    switch (key_code) {
-      case "Equal": {
-        set_font_size((x) => x + 0.05);
-        break;
-      }
-      case "Minus": {
-        set_font_size((x) => x - 0.05);
-        break;
-      }
-      case "KeyQ": {
-        set_opened_folder(null);
-        set_current_lesson_index(0);
-        break;
-      }
-      case "KeyL": {
-        set_current_lesson_index((index) => {
-          const lli = last_lesson_index();
-          if (lli && lli > index) {
-            return index + 1;
-          } else {
-            return index;
-          }
-        });
-        break;
-      }
-      case "KeyH": {
-        set_current_lesson_index((index) => {
-          if (index > 0) {
-            return index - 1;
-          } else {
-            return index;
-          }
-        });
-        break;
-      }
-      case "KeyO": {
-        const path = await opene_folder();
-        if (!path) {
-          return;
-        }
-        const config_path = path + "/" + CONFIG_NAME;
-        try {
-          const config = await invoke<Config>("open_config", {
-            path: config_path,
-          });
-          set_opened_folder(path);
-          set_folder_config(config);
-        } catch (err) {
-          console.log(err);
-        }
-        break;
-      }
-      default: {
-        break;
-      }
     }
   });
 
