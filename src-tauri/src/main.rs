@@ -51,10 +51,19 @@ fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, Str
     Ok(rs_html_generator.finalize())
 }
 
-static mut OLD_LINES: String = String::new();
+static mut CODE_OLD_LINES: String = String::new();
+
+#[inline(always)]
+fn get_old_code<'a>() -> &'a String {
+    unsafe { &CODE_OLD_LINES }
+}
+#[inline(always)]
+fn set_old_code(new_lines: String) {
+    unsafe { CODE_OLD_LINES = new_lines }
+}
 
 #[tauri::command]
-fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
+fn read_file(path: &str) -> Result<HashMap<i64, Option<String>>, String> {
     let Some(name_exten) = std::path::Path::new(path)
         .file_name()
         .and_then(|x| x.to_str().map(|x| x.split('.')))
@@ -72,22 +81,28 @@ fn read_file(path: &str) -> Result<HashMap<usize, Option<String>>, String> {
     }
 
     let new_lines = open(path).unwrap_or_default();
-    unsafe {
-        let r = diff_lines(Algorithm::Myers, &OLD_LINES, &new_lines)
-            .into_iter()
+
+    let r = if extension == "md" {
+        let html = markdown::to_html(&new_lines);
+        println!("{}", html);
+        HashMap::from([(-1, Some(html))])
+    } else {
+        let r = diff_lines(Algorithm::Myers, get_old_code(), &new_lines)
+            .iter()
             .enumerate()
             .flat_map(|(index, (tag, text))| match tag {
-                ChangeTag::Delete => Some((index, None)),
-                ChangeTag::Insert => match generate_html_from_code(text, extension) {
-                    Ok(text) => Some((index, Some(text))),
-                    Err(_) => None,
-                },
-                ChangeTag::Equal => None,
+                ChangeTag::Delete => Ok((index as i64, None)),
+                ChangeTag::Insert => {
+                    let html = generate_html_from_code(text, extension)?;
+                    Ok((index as i64, Some(html)))
+                }
+                ChangeTag::Equal => Err("".to_string()),
             })
             .collect::<HashMap<_, _>>();
-        OLD_LINES = new_lines.clone();
-        Ok(r)
-    }
+        set_old_code(new_lines);
+        r
+    };
+    Ok(r)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

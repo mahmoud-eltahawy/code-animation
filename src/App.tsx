@@ -17,7 +17,9 @@ type Config = {
 
 const CONFIG_NAME = "config.json";
 
+const ROOT_BLOCK = document.getElementById("root")!;
 const PRE_CODE_BLOCK = document.getElementById("code")!;
+const MARKDOWN_BLOCK = document.getElementById("markdown")!;
 
 async function opene_folder() {
   return await open({
@@ -128,63 +130,81 @@ listen("quit_lesson", () => {
   set_current_lesson_index(0);
 });
 
+const current_lesson_key = createMemo((_) =>
+  lessons_keys().at(current_lesson_index())
+);
+
+const current_lesson_path = createMemo((_) => {
+  const lk = current_lesson_key();
+  if (!lk) {
+    return null;
+  }
+  const lesson_key = lk.toString();
+  const ln = folder_config();
+  if (!ln) {
+    return null;
+  }
+  const lesson_name = ln.lessons[lesson_key] as Option<string>;
+  if (!lesson_name) {
+    return null;
+  }
+  const path = opened_folder();
+  if (path) {
+    return path + "/" + lesson_name;
+  } else {
+    return null;
+  }
+});
+
+
+const [the_code] = createResource(() => current_lesson_path(), read_file);
+
+createEffect(() =>
+  ROOT_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
+);
+
+function display_code() {
+  PRE_CODE_BLOCK.setAttribute("style","display: inline-block;")
+  MARKDOWN_BLOCK.setAttribute("style","display: none;")
+}
+
+function display_markdown() {
+  MARKDOWN_BLOCK.setAttribute("style","display: inline-block;")
+  PRE_CODE_BLOCK.setAttribute("style","display: none;")
+}
+
 function App() {
-  const current_lesson_key = createMemo((_) =>
-    lessons_keys().at(current_lesson_index())
-  );
-  const current_lesson_path = createMemo((_) => {
-    const lk = current_lesson_key();
-    if (!lk) {
-      return null;
-    }
-    const lesson_key = lk.toString();
-    const ln = folder_config();
-    if (!ln) {
-      return null;
-    }
-    const lesson_name = ln.lessons[lesson_key] as Option<string>;
-    if (!lesson_name) {
-      return null;
-    }
-    const path = opened_folder();
-    if (path) {
-      return path + "/" + lesson_name;
-    } else {
-      return null;
-    }
-  });
-
-  const [the_code] = createResource(() => current_lesson_path(), read_file);
-
   createEffect(() => {
     const code = the_code();
     if (!code) {
       return;
     }
-    let gap_exist = false;
-    for (const [key, new_line] of code) {
-      const key_number = +key;
-      const line_id = make_line_id(key_number);
-      const old_line = document.getElementById(line_id);
-      const line = `<span id="${line_id}">${new_line}</span>`;
-      if (new_line && old_line) {
-        old_line.insertAdjacentHTML("beforebegin", line);
-        repair_next_lines_ids(old_line);
-      } else if (new_line && !old_line) {
-        PRE_CODE_BLOCK.insertAdjacentHTML("beforeend", line);
-      } else if (!new_line && old_line) {
-        old_line.remove();
-        gap_exist = true;
+    if (code.size == 1 && Array.from(code.keys()).at(0) == "-1") {
+      display_markdown();
+      MARKDOWN_BLOCK.innerHTML = code.get("-1")!;
+    } else {
+      display_code();
+      let gap_exist = false;
+      for (const [key, new_line] of code) {
+        const key_number = +key;
+        const line_id = make_line_id(key_number);
+        const old_line = document.getElementById(line_id);
+        const line = `<span id="${line_id}">${new_line}</span>`;
+        if (new_line && old_line) {
+          old_line.insertAdjacentHTML("beforebegin", line);
+          repair_next_lines_ids(old_line);
+        } else if (new_line && !old_line) {
+          PRE_CODE_BLOCK.insertAdjacentHTML("beforeend", line);
+        } else if (!new_line && old_line) {
+          old_line.remove();
+          gap_exist = true;
+        }
+      }
+      if (gap_exist) {
+        fill_ids_gaps();
       }
     }
-    if (gap_exist) {
-      fill_ids_gaps();
-    }
   });
-
-  createEffect(() =>
-    PRE_CODE_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
-  );
 
   return <></>;
 }
