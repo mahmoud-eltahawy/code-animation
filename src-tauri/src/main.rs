@@ -87,20 +87,23 @@ fn read_file(path: &str) -> Result<HashMap<i64, Option<String>>, String> {
         println!("{}", html);
         HashMap::from([(-1, Some(html))])
     } else {
-        let r = diff_lines(Algorithm::Myers, get_old_code(), &new_lines)
-            .iter()
-            .enumerate()
-            .flat_map(|(index, (tag, text))| match tag {
-                ChangeTag::Delete => Ok((index as i64, None)),
-                ChangeTag::Insert => {
-                    let html = generate_html_from_code(text, extension)?;
-                    Ok((index as i64, Some(html)))
-                }
-                ChangeTag::Equal => Err("".to_string()),
-            })
-            .collect::<HashMap<_, _>>();
-        set_old_code(new_lines);
-        r
+        let html = generate_html_from_code(&new_lines, extension)?;
+        println!("{}", html);
+        HashMap::from([(0, Some(html))])
+        // let r = diff_lines(Algorithm::Myers, get_old_code(), &new_lines)
+        //     .iter()
+        //     .enumerate()
+        //     .flat_map(|(index, (tag, text))| match tag {
+        //         ChangeTag::Delete => Ok((index as i64, None)),
+        //         ChangeTag::Insert => {
+        //             let html = generate_html_from_code(text, extension)?;
+        //             Ok((index as i64, Some(html)))
+        //         }
+        //         ChangeTag::Equal => Err("".to_string()),
+        //     })
+        //     .collect::<HashMap<_, _>>();
+        // set_old_code(new_lines);
+        // r
     };
     Ok(r)
 }

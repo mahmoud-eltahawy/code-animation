@@ -18,7 +18,7 @@ type Config = {
 const CONFIG_NAME = "config.json";
 
 const ROOT_BLOCK = document.getElementById("root")!;
-const PRE_CODE_BLOCK = document.getElementById("code")!;
+const PRE_CODE_BLOCK = document.getElementById("-1:-1@")!;
 const MARKDOWN_BLOCK = document.getElementById("markdown")!;
 
 async function opene_folder() {
@@ -29,27 +29,27 @@ async function opene_folder() {
   }) as Option<string>;
 }
 
-function make_line_id(index: number) {
-  return `CODE_LINE-${index}`;
-}
-function repair_next_lines_ids(old_line: HTMLElement) {
-  const id = old_line.getAttribute("id")!;
-  const index = +id.split("-").at(1)!;
-  const next_line = document.getElementById(make_line_id(index + 1));
-  if (next_line) {
-    repair_next_lines_ids(next_line);
-  }
-  old_line.setAttribute("id", make_line_id(index + 1));
-}
+// function make_line_id(index: number) {
+//   return `CODE_LINE-${index}`;
+// }
+// function repair_next_lines_ids(old_line: HTMLElement) {
+//   const id = old_line.getAttribute("id")!;
+//   const index = +id.split("-").at(1)!;
+//   const next_line = document.getElementById(make_line_id(index + 1));
+//   if (next_line) {
+//     repair_next_lines_ids(next_line);
+//   }
+//   old_line.setAttribute("id", make_line_id(index + 1));
+// }
 
-function fill_ids_gaps() {
-  const spans = PRE_CODE_BLOCK.children;
-  let i = 0;
-  for (const span of spans) {
-    span.setAttribute("id", make_line_id(i));
-    i++;
-  }
-}
+// function fill_ids_gaps() {
+//   const spans = PRE_CODE_BLOCK.children;
+//   let i = 0;
+//   for (const span of spans) {
+//     span.setAttribute("id", make_line_id(i));
+//     i++;
+//   }
+// }
 
 async function read_file(path: Option<string>) {
   if (!path) {
@@ -156,7 +156,6 @@ const current_lesson_path = createMemo((_) => {
   }
 });
 
-
 const [the_code] = createResource(() => current_lesson_path(), read_file);
 
 createEffect(() =>
@@ -164,13 +163,94 @@ createEffect(() =>
 );
 
 function display_code() {
-  PRE_CODE_BLOCK.setAttribute("style","display: inline-block;")
-  MARKDOWN_BLOCK.setAttribute("style","display: none;")
+  PRE_CODE_BLOCK.setAttribute("style", "display: inline-block;");
+  MARKDOWN_BLOCK.setAttribute("style", "display: none;");
 }
 
 function display_markdown() {
-  MARKDOWN_BLOCK.setAttribute("style","display: inline-block;")
-  PRE_CODE_BLOCK.setAttribute("style","display: none;")
+  MARKDOWN_BLOCK.setAttribute("style", "display: inline-block;");
+  PRE_CODE_BLOCK.setAttribute("style", "display: none;");
+}
+
+function num_ele(
+  elements: Element[],
+  generation: number,
+  family_name: string,
+) {
+  for (let position = 0; position < elements.length; position++) {
+    elements[position].setAttribute(
+      "id",
+      `${generation}:${position}@${family_name}`,
+    );
+    num_ele(
+      Array.from(elements[position].children),
+      generation + 1,
+      `${family_name}:${position}`,
+    );
+  }
+  return elements;
+}
+
+function get_father_id(id : string) {
+  const [gp,family_name] = id.split('@');
+  const [generation] = gp.split(':');
+  const family_members = family_name.split(':');
+  const father_position = family_members.pop();
+  return `${+generation - 1 }:${father_position}@${family_members.join(':')}`;
+}
+
+function textNodesUnder(node: ChildNode | null | undefined) {
+  let all : (ChildNode | null| undefined)[] = [];
+  for (node = node?.firstChild;node;node=node.nextSibling) {
+    if(node.nodeType==3) {
+      all.push(node);
+    } else {
+      all = all.concat(textNodesUnder(node))
+    }
+  }
+  return all;
+}
+
+function createElements(str: string) {
+  const div = document.createElement("div");
+  div.innerHTML = str;
+
+  // wrap spans around text nodes
+  textNodesUnder(div).forEach((n) => {
+    const rn = document.createElement("span");
+    const value = n?.nodeValue;
+    if (value) {
+      rn.innerHTML = value;
+    }
+    n?.parentNode?.insertBefore(rn,n);
+    n?.parentNode?.removeChild(n);
+  });
+
+  const elements = num_ele(Array.from(div.children), 0, "-1");
+  div.innerHTML = "";
+  for (const element of elements) {
+    div.insertAdjacentElement("beforeend", element);
+  }
+  console.log("Father test : " + get_father_id("0:0@-1"));
+  const result = Array.from(div.getElementsByTagName("span")).sort((x, y) => {
+    const [x_generation, x_position] = x.id.split("@").at(
+      0,
+    )!.split(":").map((x) => +x);
+    const [y_generation, y_position] = y.id.split("@").at(
+      0,
+    )!.split(":").map((x) => +x);
+    if (x_generation != y_generation) {
+      return x_generation - y_generation;
+    } else {
+      return x_position - y_position;
+    }
+  });
+  result.forEach((span) => {
+    if(span.getElementsByTagName("span").length != 0) {
+      span.innerHTML = "";
+    };
+  })
+  return result;
 }
 
 function App() {
@@ -183,30 +263,27 @@ function App() {
       display_markdown();
       MARKDOWN_BLOCK.innerHTML = code.get("-1")!;
     } else {
+      PRE_CODE_BLOCK.innerHTML = "";
       display_code();
-      let gap_exist = false;
-      for (const [key, new_line] of code) {
-        const key_number = +key;
-        const line_id = make_line_id(key_number);
-        const old_line = document.getElementById(line_id);
-        const line = `<span id="${line_id}">${new_line}</span>`;
-        if (new_line && old_line) {
-          old_line.insertAdjacentHTML("beforebegin", line);
-          repair_next_lines_ids(old_line);
-        } else if (new_line && !old_line) {
-          PRE_CODE_BLOCK.insertAdjacentHTML("beforeend", line);
-        } else if (!new_line && old_line) {
-          old_line.remove();
-          gap_exist = true;
-        }
-      }
-      if (gap_exist) {
-        fill_ids_gaps();
+      const elements = createElements(code.get("0")!);
+      let t = 1;
+      for (const element of elements) {
+        const id = element.id;
+        t++;
+        setTimeout(() => {
+          document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+        },t * 50);
       }
     }
   });
 
   return <></>;
 }
+
+// function insert_element(father : Element|HTMLElement ,son : Element | HTMLElement,num : number) {
+//   setTimeout(() => {
+//     father.insertAdjacentElement("beforeend",son);
+//   },1 / num * 1000);
+// }
 
 export default App;
