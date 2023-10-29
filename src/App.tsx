@@ -255,16 +255,15 @@ listen("new_code",(ev) => {
     const id = element.id;
     t++;
     setTimeout(() => {
-      const father = document.getElementById(get_father_id(id));
       if(ord === "1") {
         const ele = document.getElementById(id);
         if(ele) {
           ele.replaceWith(element);
         } else {
-          father?.insertAdjacentElement("beforeend",element);
+          document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
         }
       } else if(ord === "-1") {
-        father?.removeChild(element);
+        document.getElementById(id)?.remove();
       }
     },t * 50);
   }
