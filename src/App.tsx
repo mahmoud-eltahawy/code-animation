@@ -243,18 +243,29 @@ function sortSpans(spans : HTMLSpanElement[]) {
 }
 
 listen("new_code",(ev) => {
-  PRE_CODE_BLOCK.innerHTML = "";
   display_code();
-  const spans = ev.payload as string[];
+  const spans = ev.payload as ["1"|"-1",string][];
   const div = document.createElement("div");
-  div.innerHTML = spans.join("");
-  const elements = seperateSpans(div);
+  const elements = spans.map(([ord,span]) => {
+    div.innerHTML = span;
+    return [ord ,div.firstChild]  as ["1"|"-1",HTMLSpanElement];
+  })
   let t = 1;
-  for (const element of elements) {
+  for (const [ord,element] of elements) {
     const id = element.id;
     t++;
     setTimeout(() => {
-      document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+      const father = document.getElementById(get_father_id(id));
+      if(ord === "1") {
+        const ele = document.getElementById(id);
+        if(ele) {
+          ele.replaceWith(element);
+        } else {
+          father?.insertAdjacentElement("beforeend",element);
+        }
+      } else if(ord === "-1") {
+        father?.removeChild(element);
+      }
     },t * 50);
   }
 });

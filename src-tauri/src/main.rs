@@ -11,10 +11,7 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 
-use similar::{
-    utils::{diff_lines, diff_words},
-    Algorithm, ChangeTag,
-};
+use similar::{utils::diff_lines, Algorithm, ChangeTag};
 use syntect::{
     html::{ClassStyle, ClassedHTMLGenerator},
     parsing::SyntaxSet,
@@ -58,7 +55,7 @@ fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, Str
 static mut CODE_OLD_LINES: Vec<String> = Vec::new();
 
 #[inline(always)]
-fn get_old_code<'a>(new_code: &Vec<String>) -> &Vec<String> {
+fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
     unsafe {
         let lines1 = CODE_OLD_LINES
             .clone()
@@ -70,12 +67,23 @@ fn get_old_code<'a>(new_code: &Vec<String>) -> &Vec<String> {
             .into_iter()
             .intersperse("\n".to_string())
             .collect::<String>();
-        let d = diff_lines(Algorithm::Myers, &lines1, &lines2);
-        println!("{:#?}", d);
-        new_code
+        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
+            .into_iter()
+            .flat_map(|(tag, str)| match tag {
+                ChangeTag::Delete => {
+                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Insert => {
+                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Equal => None,
+            })
+            .collect::<Vec<_>>();
+        diffs
     }
 }
-#[inline(always)]
+
+const NEW_LINE: &str = "*#%NEW_LINE%#*";
 fn set_old_code(new_lines: Vec<String>) {
     unsafe { CODE_OLD_LINES = new_lines }
 }
@@ -143,7 +151,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .into_iter()
                     .map(|x| {
                         let x = x.replace("\\\"", "\"");
-                        x.replace("\\n", "\n")
+                        let x = x.replace("\\n", NEW_LINE);
+                        x.replace("\n", NEW_LINE)
                     })
                     .collect::<Vec<_>>();
                 main_window3
