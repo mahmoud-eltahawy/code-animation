@@ -1,5 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![feature(iter_intersperse)]
 use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
@@ -10,7 +11,10 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 
-use similar::{utils::diff_lines, Algorithm, ChangeTag};
+use similar::{
+    utils::{diff_lines, diff_words},
+    Algorithm, ChangeTag,
+};
 use syntect::{
     html::{ClassStyle, ClassedHTMLGenerator},
     parsing::SyntaxSet,
@@ -51,14 +55,28 @@ fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, Str
     Ok(rs_html_generator.finalize())
 }
 
-static mut CODE_OLD_LINES: String = String::new();
+static mut CODE_OLD_LINES: Vec<String> = Vec::new();
 
 #[inline(always)]
-fn get_old_code<'a>() -> &'a String {
-    unsafe { &CODE_OLD_LINES }
+fn get_old_code<'a>(new_code: &Vec<String>) -> &Vec<String> {
+    unsafe {
+        let lines1 = CODE_OLD_LINES
+            .clone()
+            .into_iter()
+            .intersperse("\n".to_string())
+            .collect::<String>();
+        let lines2 = new_code
+            .to_owned()
+            .into_iter()
+            .intersperse("\n".to_string())
+            .collect::<String>();
+        let d = diff_lines(Algorithm::Myers, &lines1, &lines2);
+        println!("{:#?}", d);
+        new_code
+    }
 }
 #[inline(always)]
-fn set_old_code(new_lines: String) {
+fn set_old_code(new_lines: Vec<String>) {
     unsafe { CODE_OLD_LINES = new_lines }
 }
 
@@ -84,26 +102,10 @@ fn read_file(path: &str) -> Result<HashMap<i64, Option<String>>, String> {
 
     let r = if extension == "md" {
         let html = markdown::to_html(&new_lines);
-        println!("{}", html);
         HashMap::from([(-1, Some(html))])
     } else {
         let html = generate_html_from_code(&new_lines, extension)?;
-        println!("{}", html);
         HashMap::from([(0, Some(html))])
-        // let r = diff_lines(Algorithm::Myers, get_old_code(), &new_lines)
-        //     .iter()
-        //     .enumerate()
-        //     .flat_map(|(index, (tag, text))| match tag {
-        //         ChangeTag::Delete => Ok((index as i64, None)),
-        //         ChangeTag::Insert => {
-        //             let html = generate_html_from_code(text, extension)?;
-        //             Ok((index as i64, Some(html)))
-        //         }
-        //         ChangeTag::Equal => Err("".to_string()),
-        //     })
-        //     .collect::<HashMap<_, _>>();
-        // set_old_code(new_lines);
-        // r
     };
     Ok(r)
 }
@@ -131,22 +133,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tauri::Builder::default()
         .setup(move |app| {
-            let main_window = app.get_window("main").unwrap();
+            let main_window1 = app.get_window("main").unwrap();
+            let main_window2 = app.get_window("main").unwrap();
+            let main_window3 = app.get_window("main").unwrap();
+            main_window1.listen("set_code", move |ev| {
+                let payload = ev.payload().unwrap_or_default();
+                let payload: Vec<String> = serde_json::from_str(payload).unwrap();
+                let payload = payload
+                    .into_iter()
+                    .map(|x| {
+                        let x = x.replace("\\\"", "\"");
+                        x.replace("\\n", "\n")
+                    })
+                    .collect::<Vec<_>>();
+                main_window3
+                    .emit("new_code", get_old_code(&payload))
+                    .unwrap();
+                set_old_code(payload);
+            });
             std::thread::spawn(move || loop {
                 if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                     if event.state == HotKeyState::Pressed {
                         if event.id == open_lesson.id() {
-                            main_window.emit(stringify!(open_lesson), ()).unwrap();
+                            main_window2.emit(stringify!(open_lesson), ()).unwrap();
                         } else if event.id == quit_lesson.id() {
-                            main_window.emit(stringify!(quit_lesson), ()).unwrap();
+                            main_window2.emit(stringify!(quit_lesson), ()).unwrap();
                         } else if event.id == next_snippet.id() {
-                            main_window.emit(stringify!(next_snippet), ()).unwrap();
+                            main_window2.emit(stringify!(next_snippet), ()).unwrap();
                         } else if event.id == previous_snippet.id() {
-                            main_window.emit(stringify!(previous_snippet), ()).unwrap();
+                            main_window2.emit(stringify!(previous_snippet), ()).unwrap();
                         } else if event.id == font_increase.id() {
-                            main_window.emit(stringify!(font_increase), ()).unwrap();
+                            main_window2.emit(stringify!(font_increase), ()).unwrap();
                         } else if event.id == font_decrease.id() {
-                            main_window.emit(stringify!(font_decrease), ()).unwrap();
+                            main_window2.emit(stringify!(font_decrease), ()).unwrap();
                         }
                     }
                 }

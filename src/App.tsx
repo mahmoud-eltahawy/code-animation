@@ -6,7 +6,7 @@ import {
 } from "solid-js";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 
 type Option<T> = T | null;
 
@@ -28,28 +28,6 @@ async function opene_folder() {
     multiple: false,
   }) as Option<string>;
 }
-
-// function make_line_id(index: number) {
-//   return `CODE_LINE-${index}`;
-// }
-// function repair_next_lines_ids(old_line: HTMLElement) {
-//   const id = old_line.getAttribute("id")!;
-//   const index = +id.split("-").at(1)!;
-//   const next_line = document.getElementById(make_line_id(index + 1));
-//   if (next_line) {
-//     repair_next_lines_ids(next_line);
-//   }
-//   old_line.setAttribute("id", make_line_id(index + 1));
-// }
-
-// function fill_ids_gaps() {
-//   const spans = PRE_CODE_BLOCK.children;
-//   let i = 0;
-//   for (const span of spans) {
-//     span.setAttribute("id", make_line_id(i));
-//     i++;
-//   }
-// }
 
 async function read_file(path: Option<string>) {
   if (!path) {
@@ -172,7 +150,7 @@ function display_markdown() {
   PRE_CODE_BLOCK.setAttribute("style", "display: none;");
 }
 
-function num_ele(
+function number_spans(
   elements: Element[],
   generation: number,
   family_name: string,
@@ -182,7 +160,7 @@ function num_ele(
       "id",
       `${generation}:${position}@${family_name}`,
     );
-    num_ele(
+    number_spans(
       Array.from(elements[position].children),
       generation + 1,
       `${family_name}:${position}`,
@@ -211,7 +189,7 @@ function textNodesUnder(node: ChildNode | null | undefined) {
   return all;
 }
 
-function createElements(str: string) {
+function wrap_text_number_spans(str :string) {
   const div = document.createElement("div");
   div.innerHTML = str;
 
@@ -226,13 +204,29 @@ function createElements(str: string) {
     n?.parentNode?.removeChild(n);
   });
 
-  const elements = num_ele(Array.from(div.children), 0, "-1");
+  const elements = number_spans(Array.from(div.children), 0, "-1");
   div.innerHTML = "";
   for (const element of elements) {
     div.insertAdjacentElement("beforeend", element);
   }
-  console.log("Father test : " + get_father_id("0:0@-1"));
-  const result = Array.from(div.getElementsByTagName("span")).sort((x, y) => {
+  return div;
+  
+}
+
+function seperateSpans(div : HTMLDivElement) {
+  return Array.from(div.getElementsByTagName("span"));
+}
+
+function unnest_spans(spans : HTMLSpanElement[]) {
+  spans.forEach((span) => {
+    if(span.getElementsByTagName("span").length != 0) {
+      span.innerHTML = "";
+    };
+  })
+}
+
+function sortSpans(spans : HTMLSpanElement[]) {
+  const result = spans.sort((x, y) => {
     const [x_generation, x_position] = x.id.split("@").at(
       0,
     )!.split(":").map((x) => +x);
@@ -245,13 +239,25 @@ function createElements(str: string) {
       return x_position - y_position;
     }
   });
-  result.forEach((span) => {
-    if(span.getElementsByTagName("span").length != 0) {
-      span.innerHTML = "";
-    };
-  })
   return result;
 }
+
+listen("new_code",(ev) => {
+  PRE_CODE_BLOCK.innerHTML = "";
+  display_code();
+  const spans = ev.payload as string[];
+  const div = document.createElement("div");
+  div.innerHTML = spans.join("");
+  const elements = seperateSpans(div);
+  let t = 1;
+  for (const element of elements) {
+    const id = element.id;
+    t++;
+    setTimeout(() => {
+      document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+    },t * 50);
+  }
+});
 
 function App() {
   createEffect(() => {
@@ -263,27 +269,15 @@ function App() {
       display_markdown();
       MARKDOWN_BLOCK.innerHTML = code.get("-1")!;
     } else {
-      PRE_CODE_BLOCK.innerHTML = "";
-      display_code();
-      const elements = createElements(code.get("0")!);
-      let t = 1;
-      for (const element of elements) {
-        const id = element.id;
-        t++;
-        setTimeout(() => {
-          document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
-        },t * 50);
-      }
+      const div = wrap_text_number_spans(code.get("0")!);
+      const spans = seperateSpans(div);
+      const elements = sortSpans(spans);
+      unnest_spans(elements);
+      emit("set_code",elements.map((x) => x.outerHTML));
     }
   });
 
   return <></>;
 }
-
-// function insert_element(father : Element|HTMLElement ,son : Element | HTMLElement,num : number) {
-//   setTimeout(() => {
-//     father.insertAdjacentElement("beforeend",son);
-//   },1 / num * 1000);
-// }
 
 export default App;
