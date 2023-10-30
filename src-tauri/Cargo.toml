@@ -21,6 +21,8 @@ syntect = "5.1.0"
 similar = "^2.3"
 global-hotkey = "0.4.0"
 markdown = "0.3.0"
+html_editor = "^0.6"
+itertools = "0.11.0"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

@@ -7,7 +7,7 @@ use global_hotkey::{
 };
 use tauri::Manager;
 
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{cmp::Ordering, collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,10 +18,108 @@ use syntect::{
     util::LinesWithEndings,
 };
 
+use itertools::Itertools;
+
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 struct Config {
     name: String,
     lessons: HashMap<String, String>,
+}
+
+use html_editor::{operation::*, Element};
+use html_editor::{parse, Node};
+
+fn wrap_with_id_spans(nodes: Vec<Node>, genration: usize, family: String) -> Vec<Node> {
+    nodes
+        .into_iter()
+        .enumerate()
+        .map(|(index, node)| match node {
+            Node::Element(ele) => {
+                let mut element = ele;
+                element.attrs = element
+                    .attrs
+                    .into_iter()
+                    .filter(|x| x.0 != "id")
+                    .chain(vec![(
+                        "id".to_string(),
+                        format!("{genration}:{index}@{family}"),
+                    )])
+                    .collect::<Vec<_>>();
+                element.children = wrap_with_id_spans(
+                    element.children,
+                    genration + 1,
+                    format!("{}:{}", family, index),
+                );
+                element.into_node()
+            }
+            _ => Node::Element(Element::new(
+                "span",
+                vec![("id", format!("{genration}:{index}@{family}").as_str())],
+                vec![node],
+            )),
+        })
+        .collect::<Vec<_>>()
+}
+
+fn seperate_spans(ele: Element) -> Vec<Element> {
+    ele.query_all(&Selector::from("span"))
+        .into_iter()
+        .map(|x| {
+            let mut y = x.clone();
+            if let [Node::Text(..) | Node::Comment(..) | Node::Doctype(..)] = y.children[..] {
+                return y;
+            } else {
+                y.children = vec![];
+                y
+            }
+        })
+        .sorted_by(|x, y| {
+            let xid = x
+                .attrs
+                .iter()
+                .filter(|(head, _)| head == "id")
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>();
+            let xid = xid.first();
+            let yid = y
+                .attrs
+                .iter()
+                .filter(|(head, _)| head == "id")
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>();
+            let yid = yid.first();
+            let (Some(xid), Some(yid)) = (xid, yid) else {
+                return Ordering::Equal;
+            };
+            let [xid, ..] = xid.split('@').collect::<Vec<_>>()[..] else {
+                return Ordering::Equal;
+            };
+            let [yid, ..] = yid.split('@').collect::<Vec<_>>()[..] else {
+                return Ordering::Equal;
+            };
+
+            let [x_generation, x_index] = xid
+                .split(':')
+                .flat_map(|x| x.parse::<i32>())
+                .collect::<Vec<_>>()[..]
+            else {
+                return Ordering::Equal;
+            };
+            let [y_generation, y_index] = yid
+                .split(':')
+                .flat_map(|x| x.parse::<i32>())
+                .collect::<Vec<_>>()[..]
+            else {
+                return Ordering::Equal;
+            };
+
+            if x_generation.cmp(&y_generation) != Ordering::Equal {
+                return x_generation.cmp(&y_generation);
+            } else {
+                return x_index.cmp(&y_index);
+            }
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -57,15 +155,9 @@ static mut CODE_OLD_LINES: Vec<String> = Vec::new();
 #[inline(always)]
 fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
     unsafe {
-        let lines1 = CODE_OLD_LINES
-            .clone()
-            .into_iter()
-            .intersperse("\n".to_string())
+        let lines1 = Itertools::intersperse(CODE_OLD_LINES.clone().into_iter(), "\n".to_string())
             .collect::<String>();
-        let lines2 = new_code
-            .to_owned()
-            .into_iter()
-            .intersperse("\n".to_string())
+        let lines2 = Itertools::intersperse(new_code.to_owned().into_iter(), "\n".to_string())
             .collect::<String>();
         let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
             .into_iter()
@@ -89,7 +181,7 @@ fn set_old_code(new_lines: Vec<String>) {
 }
 
 #[tauri::command]
-fn read_file(path: &str) -> Result<HashMap<i64, Option<String>>, String> {
+fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
     let Some(name_exten) = std::path::Path::new(path)
         .file_name()
         .and_then(|x| x.to_str().map(|x| x.split('.')))
@@ -108,14 +200,23 @@ fn read_file(path: &str) -> Result<HashMap<i64, Option<String>>, String> {
 
     let new_lines = open(path).unwrap_or_default();
 
-    let r = if extension == "md" {
-        let html = markdown::to_html(&new_lines);
-        HashMap::from([(-1, Some(html))])
-    } else {
-        let html = generate_html_from_code(&new_lines, extension)?;
-        HashMap::from([(0, Some(html))])
-    };
-    Ok(r)
+    let html = generate_html_from_code(&new_lines, extension)?;
+    let html = html.replace("\\\"", "\"");
+    let html = html.replace("\\n", NEW_LINE);
+    let html = html.replace("\n", NEW_LINE);
+
+    let dom = parse(&html).unwrap_or_default();
+    let dom = wrap_with_id_spans(dom, 0, "-1".to_string());
+    let dom = Element::new("div", vec![], dom);
+    let dom = seperate_spans(dom);
+    let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
+
+    let dom = get_old_code(&spans);
+    set_old_code(spans);
+
+    println!("Dom : {:#?}", dom);
+
+    return Ok(dom);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -141,40 +242,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tauri::Builder::default()
         .setup(move |app| {
-            let main_window1 = app.get_window("main").unwrap();
-            let main_window2 = app.get_window("main").unwrap();
-            let main_window3 = app.get_window("main").unwrap();
-            main_window1.listen("set_code", move |ev| {
-                let payload = ev.payload().unwrap_or_default();
-                let payload: Vec<String> = serde_json::from_str(payload).unwrap();
-                let payload = payload
-                    .into_iter()
-                    .map(|x| {
-                        let x = x.replace("\\\"", "\"");
-                        let x = x.replace("\\n", NEW_LINE);
-                        x.replace("\n", NEW_LINE)
-                    })
-                    .collect::<Vec<_>>();
-                main_window3
-                    .emit("new_code", get_old_code(&payload))
-                    .unwrap();
-                set_old_code(payload);
-            });
+            let main_window = app.get_window("main").unwrap();
             std::thread::spawn(move || loop {
                 if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                     if event.state == HotKeyState::Pressed {
                         if event.id == open_lesson.id() {
-                            main_window2.emit(stringify!(open_lesson), ()).unwrap();
+                            main_window.emit(stringify!(open_lesson), ()).unwrap();
                         } else if event.id == quit_lesson.id() {
-                            main_window2.emit(stringify!(quit_lesson), ()).unwrap();
+                            main_window.emit(stringify!(quit_lesson), ()).unwrap();
                         } else if event.id == next_snippet.id() {
-                            main_window2.emit(stringify!(next_snippet), ()).unwrap();
+                            main_window.emit(stringify!(next_snippet), ()).unwrap();
                         } else if event.id == previous_snippet.id() {
-                            main_window2.emit(stringify!(previous_snippet), ()).unwrap();
+                            main_window.emit(stringify!(previous_snippet), ()).unwrap();
                         } else if event.id == font_increase.id() {
-                            main_window2.emit(stringify!(font_increase), ()).unwrap();
+                            main_window.emit(stringify!(font_increase), ()).unwrap();
                         } else if event.id == font_decrease.id() {
-                            main_window2.emit(stringify!(font_decrease), ()).unwrap();
+                            main_window.emit(stringify!(font_decrease), ()).unwrap();
                         }
                     }
                 }

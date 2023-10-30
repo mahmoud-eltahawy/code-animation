@@ -1,12 +1,11 @@
 import {
   createEffect,
   createMemo,
-  createResource,
   createSignal,
 } from "solid-js";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
-import { emit, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 
 type Option<T> = T | null;
 
@@ -18,8 +17,6 @@ type Config = {
 const CONFIG_NAME = "config.json";
 
 const ROOT_BLOCK = document.getElementById("root")!;
-const PRE_CODE_BLOCK = document.getElementById("-1:-1@")!;
-const MARKDOWN_BLOCK = document.getElementById("markdown")!;
 
 async function opene_folder() {
   return await open({
@@ -31,16 +28,37 @@ async function opene_folder() {
 
 async function read_file(path: Option<string>) {
   if (!path) {
-    return new Map() as Map<string, Option<string>>;
+    return [];
   }
   try {
-    const result = await invoke<object>(
+    const spans = await invoke<["1" | "-1",string][]>(
       "read_file",
       { path },
     );
-    return new Map(Object.entries(result)) as Map<string, Option<string>>;
+    const div = document.createElement("div");
+    const elements = spans.map(([ord,span]) => {
+      div.innerHTML = span;
+      return [ord ,div.firstChild]  as ["1"|"-1",HTMLSpanElement];
+    })
+    let t = 1;
+    for (const [ord,element] of elements) {
+      const id = element.id;
+      t++;
+      setTimeout(() => {
+        if(ord === "1") {
+          const ele = document.getElementById(id);
+          if(ele) {
+            ele.replaceWith(element);
+          } else {
+            document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+          }
+        } else if(ord === "-1") {
+          document.getElementById(id)?.remove();
+        }
+      },t * 50);
+    }
   } catch (_err) {
-    return new Map() as Map<string, Option<string>>;
+    return [];
   }
 }
 
@@ -134,40 +152,9 @@ const current_lesson_path = createMemo((_) => {
   }
 });
 
-const [the_code] = createResource(() => current_lesson_path(), read_file);
-
 createEffect(() =>
   ROOT_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
 );
-
-function display_code() {
-  PRE_CODE_BLOCK.setAttribute("style", "display: inline-block;");
-  MARKDOWN_BLOCK.setAttribute("style", "display: none;");
-}
-
-function display_markdown() {
-  MARKDOWN_BLOCK.setAttribute("style", "display: inline-block;");
-  PRE_CODE_BLOCK.setAttribute("style", "display: none;");
-}
-
-function number_spans(
-  elements: Element[],
-  generation: number,
-  family_name: string,
-) {
-  for (let position = 0; position < elements.length; position++) {
-    elements[position].setAttribute(
-      "id",
-      `${generation}:${position}@${family_name}`,
-    );
-    number_spans(
-      Array.from(elements[position].children),
-      generation + 1,
-      `${family_name}:${position}`,
-    );
-  }
-  return elements;
-}
 
 function get_father_id(id : string) {
   const [gp,family_name] = id.split('@');
@@ -177,114 +164,9 @@ function get_father_id(id : string) {
   return `${+generation - 1 }:${father_position}@${family_members.join(':')}`;
 }
 
-function textNodesUnder(node: ChildNode | null | undefined) {
-  let all : (ChildNode | null| undefined)[] = [];
-  for (node = node?.firstChild;node;node=node.nextSibling) {
-    if(node.nodeType==3) {
-      all.push(node);
-    } else {
-      all = all.concat(textNodesUnder(node))
-    }
-  }
-  return all;
-}
-
-function wrap_text_number_spans(str :string) {
-  const div = document.createElement("div");
-  div.innerHTML = str;
-
-  // wrap spans around text nodes
-  textNodesUnder(div).forEach((n) => {
-    const rn = document.createElement("span");
-    const value = n?.nodeValue;
-    if (value) {
-      rn.innerHTML = value;
-    }
-    n?.parentNode?.insertBefore(rn,n);
-    n?.parentNode?.removeChild(n);
-  });
-
-  const elements = number_spans(Array.from(div.children), 0, "-1");
-  div.innerHTML = "";
-  for (const element of elements) {
-    div.insertAdjacentElement("beforeend", element);
-  }
-  return div;
-  
-}
-
-function seperateSpans(div : HTMLDivElement) {
-  return Array.from(div.getElementsByTagName("span"));
-}
-
-function unnest_spans(spans : HTMLSpanElement[]) {
-  spans.forEach((span) => {
-    if(span.getElementsByTagName("span").length != 0) {
-      span.innerHTML = "";
-    };
-  })
-}
-
-function sortSpans(spans : HTMLSpanElement[]) {
-  const result = spans.sort((x, y) => {
-    const [x_generation, x_position] = x.id.split("@").at(
-      0,
-    )!.split(":").map((x) => +x);
-    const [y_generation, y_position] = y.id.split("@").at(
-      0,
-    )!.split(":").map((x) => +x);
-    if (x_generation != y_generation) {
-      return x_generation - y_generation;
-    } else {
-      return x_position - y_position;
-    }
-  });
-  return result;
-}
-
-listen("new_code",(ev) => {
-  display_code();
-  const spans = ev.payload as ["1"|"-1",string][];
-  const div = document.createElement("div");
-  const elements = spans.map(([ord,span]) => {
-    div.innerHTML = span;
-    return [ord ,div.firstChild]  as ["1"|"-1",HTMLSpanElement];
-  })
-  let t = 1;
-  for (const [ord,element] of elements) {
-    const id = element.id;
-    t++;
-    setTimeout(() => {
-      if(ord === "1") {
-        const ele = document.getElementById(id);
-        if(ele) {
-          ele.replaceWith(element);
-        } else {
-          document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
-        }
-      } else if(ord === "-1") {
-        document.getElementById(id)?.remove();
-      }
-    },t * 50);
-  }
-});
-
 function App() {
   createEffect(() => {
-    const code = the_code();
-    if (!code) {
-      return;
-    }
-    if (code.size == 1 && Array.from(code.keys()).at(0) == "-1") {
-      display_markdown();
-      MARKDOWN_BLOCK.innerHTML = code.get("-1")!;
-    } else {
-      const div = wrap_text_number_spans(code.get("0")!);
-      const spans = seperateSpans(div);
-      const elements = sortSpans(spans);
-      unnest_spans(elements);
-      emit("set_code",elements.map((x) => x.outerHTML));
-    }
+    read_file(current_lesson_path());
   });
 
   return <></>;
