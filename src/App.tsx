@@ -50,9 +50,15 @@ async function read_file(path: Option<string>) {
           if(ele) {
             ele.replaceWith(element);
           } else {
-            document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+            let older_brother = document.getElementById(get_older_brother_id(id));
+            if(older_brother) {
+              older_brother.insertAdjacentElement("afterend",element);
+            } else {
+              document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+            }
           }
-        } else if(ord === "-1") {
+        }
+        if(ord === "-1") {
           document.getElementById(id)?.remove();
         }
       },t * 50);
@@ -163,6 +169,14 @@ function get_father_id(id : string) {
   const father_position = family_members.pop();
   return `${+generation - 1 }:${father_position}@${family_members.join(':')}`;
 }
+
+function get_older_brother_id(id : string) {
+  const [gp,family_name] = id.split('@');
+  const [generation,position] = gp.split(':');
+  let older_brother_position = +position;
+  return `${generation}:${older_brother_position - 1}@${family_name}`;
+}
+
 
 function App() {
   createEffect(() => {
