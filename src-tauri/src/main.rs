@@ -214,8 +214,6 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
     let dom = get_old_code(&spans);
     set_old_code(spans);
 
-    println!("Dom : {:#?}", dom);
-
     return Ok(dom);
 }
 

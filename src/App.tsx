@@ -40,28 +40,38 @@ async function read_file(path: Option<string>) {
       div.innerHTML = span;
       return [ord ,div.firstChild]  as ["1"|"-1",HTMLSpanElement];
     })
-    let t = 1;
+    let timer = 0;
+    const TIMER_FACTOR = 2
     for (const [ord,element] of elements) {
       const id = element.id;
-      t++;
-      setTimeout(() => {
+      const [gp,family] = id.split('@');
+      const [generation,position] = gp.split(':').map(x => +x);
+      const family_len = family.split(':').length;
+      timer = timer + (generation + position + family_len * 6) * TIMER_FACTOR;
         if(ord === "1") {
-          const ele = document.getElementById(id);
-          if(ele) {
-            ele.replaceWith(element);
-          } else {
-            let older_brother = document.getElementById(get_older_brother_id(id));
-            if(older_brother) {
-              older_brother.insertAdjacentElement("afterend",element);
-            } else {
-              document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
-            }
-          }
+          setTimeout(() => {
+              const ele = document.getElementById(id);
+              if(ele) {
+                ele.replaceWith(element);
+              } else {
+                const older_brother = document.getElementById(get_older_brother_id(id));
+                if(older_brother) {
+                  older_brother.insertAdjacentElement("afterend",element);
+                } else {
+                  document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
+                }
+              }
+          },timer);
         }
         if(ord === "-1") {
-          document.getElementById(id)?.remove();
+          const target = document.getElementById(id);
+          target?.setAttribute("style",`
+            opacity : 0.33;
+          `);
+          setTimeout(() => {
+            target?.remove();
+          },timer);
         }
-      },t * 50);
     }
   } catch (_err) {
     return [];
