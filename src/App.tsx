@@ -68,15 +68,19 @@ async function read_file(path: Option<string>) {
           target?.setAttribute("style",`
             opacity : 0.33;
           `);
-          setTimeout(() => {
-            target?.remove();
-          },timer);
+          if (remember_mode()) {
+            setTimeout(() => {
+              target?.remove();
+            },timer);
+          }
         }
     }
   } catch (_err) {
     return [];
   }
 }
+
+const [remember_mode,set_remember_mode] = createSignal(false);
 
 const [opened_folder, set_opened_folder] = createSignal<Option<string>>(null);
 const [folder_config, set_folder_config] = createSignal<Option<Config>>(null);
@@ -94,6 +98,14 @@ const lessons_keys = createMemo((_) => {
 
 const last_lesson_index = createMemo((_) => lessons_keys().length - 1);
 const [current_lesson_index, set_current_lesson_index] = createSignal(0);
+
+listen("remember_toggle",() => {
+  if(remember_mode()) {
+    set_remember_mode(false);
+  } else {
+    set_remember_mode(true);
+  }
+})
 
 listen("next_snippet", () =>
   set_current_lesson_index((index) => {

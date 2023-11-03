@@ -226,6 +226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let font_decrease = HotKey::new(None, Code::Minus);
     let next_snippet = HotKey::new(None, Code::KeyL);
     let previous_snippet = HotKey::new(None, Code::KeyH);
+    let remember_toggle = HotKey::new(None, Code::KeyM);
     let next_snippet_stacked = HotKey::new(Some(Modifiers::SHIFT), Code::KeyL);
 
     keys_manager.register_all(&[
@@ -236,6 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         next_snippet,
         previous_snippet,
         next_snippet_stacked,
+        remember_toggle,
     ])?;
 
     tauri::Builder::default()
@@ -256,6 +258,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             main_window.emit(stringify!(font_increase), ()).unwrap();
                         } else if event.id == font_decrease.id() {
                             main_window.emit(stringify!(font_decrease), ()).unwrap();
+                        } else if event.id == remember_toggle.id() {
+                            main_window.emit(stringify!(remember_toggle), ()).unwrap();
                         }
                     }
                 }
