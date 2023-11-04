@@ -61,18 +61,22 @@ fn wrap_with_id_spans(nodes: Vec<Node>, genration: usize, family: String) -> Vec
         .collect::<Vec<_>>()
 }
 
-fn seperate_spans(ele: Element) -> Vec<Element> {
-    ele.query_all(&Selector::from("span"))
+fn seperate_html_elements(ele: Element) -> Vec<Element> {
+    ele.query_all(&Selector::from("span,h1,h2,h3,h4,h5,h6,pre,li,ul,a"))
         .into_iter()
         .map(|x| {
             let mut y = x.clone();
-            if let [Node::Text(..) | Node::Comment(..) | Node::Doctype(..)] = y.children[..] {
-                return y;
-            } else {
+            if y.children.iter().any(|x| matches!(x, Node::Element(_))) {
                 y.children = vec![];
-                y
             }
+            y
         })
+        .collect::<Vec<_>>()
+}
+
+fn sort_html_elements(elements: Vec<Element>) -> Vec<Element> {
+    elements
+        .into_iter()
         .sorted_by(|x, y| {
             let xid = x
                 .attrs
@@ -91,10 +95,10 @@ fn seperate_spans(ele: Element) -> Vec<Element> {
             let (Some(xid), Some(yid)) = (xid, yid) else {
                 return Ordering::Equal;
             };
-            let [xid, ..] = xid.split('@').collect::<Vec<_>>()[..] else {
+            let [xid, x_family, ..] = xid.split('@').collect::<Vec<_>>()[..] else {
                 return Ordering::Equal;
             };
-            let [yid, ..] = yid.split('@').collect::<Vec<_>>()[..] else {
+            let [yid, y_family, ..] = yid.split('@').collect::<Vec<_>>()[..] else {
                 return Ordering::Equal;
             };
 
@@ -113,7 +117,12 @@ fn seperate_spans(ele: Element) -> Vec<Element> {
                 return Ordering::Equal;
             };
 
-            if x_generation.cmp(&y_generation) != Ordering::Equal {
+            let x_family = x_family.split(':').count();
+            let y_family = y_family.split(':').count();
+
+            if x_family.cmp(&y_family) != Ordering::Equal {
+                return x_family.cmp(&y_family);
+            } else if x_generation.cmp(&y_generation) != Ordering::Equal {
                 return x_generation.cmp(&y_generation);
             } else {
                 return x_index.cmp(&y_index);
@@ -151,6 +160,7 @@ fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, Str
 }
 
 static mut CODE_OLD_LINES: Vec<String> = Vec::new();
+static mut MARKDOWN_LINES: Vec<String> = Vec::new();
 
 #[inline(always)]
 fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
@@ -175,9 +185,37 @@ fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
     }
 }
 
+#[inline(always)]
+fn get_markdown<'a>(markdown: &Vec<String>) -> Vec<(String, String)> {
+    unsafe {
+        let lines1 = Itertools::intersperse(MARKDOWN_LINES.clone().into_iter(), "\n".to_string())
+            .collect::<String>();
+        let lines2 = Itertools::intersperse(markdown.to_owned().into_iter(), "\n".to_string())
+            .collect::<String>();
+        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
+            .into_iter()
+            .flat_map(|(tag, str)| match tag {
+                ChangeTag::Delete => {
+                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Insert => {
+                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Equal => None,
+            })
+            .collect::<Vec<_>>();
+        diffs
+    }
+}
+
 const NEW_LINE: &str = "*#%NEW_LINE%#*";
+
 fn set_old_code(new_lines: Vec<String>) {
     unsafe { CODE_OLD_LINES = new_lines }
+}
+
+fn set_markdown(new_lines: Vec<String>) {
+    unsafe { MARKDOWN_LINES = new_lines }
 }
 
 #[tauri::command]
@@ -191,6 +229,9 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
     let [_, extension] = name_exten.into_iter().collect::<Vec<_>>()[..] else {
         return Err("extension problem".to_string());
     };
+
+    let is_markdown = extension == "md";
+
     fn open(path: &str) -> Result<String, Box<dyn std::error::Error>> {
         let mut file = File::open(path)?;
         let mut content = String::new();
@@ -198,23 +239,47 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
         Ok(content)
     }
 
+    fn replace_senstive_chars(html : String) -> String {
+        let html = html.replace("\\\"", "\"");
+        let html = html.replace("\\n", NEW_LINE);
+        html.replace("\n", NEW_LINE)
+    }
+
     let new_lines = open(path).unwrap_or_default();
 
-    let html = generate_html_from_code(&new_lines, extension)?;
-    let html = html.replace("\\\"", "\"");
-    let html = html.replace("\\n", NEW_LINE);
-    let html = html.replace("\n", NEW_LINE);
+    let result = if is_markdown {
+        let html = markdown::to_html(&new_lines);
+        println!("{:#?}", html);
+        let html = replace_senstive_chars(html);
 
-    let dom = parse(&html).unwrap_or_default();
-    let dom = wrap_with_id_spans(dom, 0, "-1".to_string());
-    let dom = Element::new("div", vec![], dom);
-    let dom = seperate_spans(dom);
-    let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
+        let dom = parse(&html).unwrap_or_default();
+        let dom = wrap_with_id_spans(dom, 0, "-1:-1".to_string());
+        let dom = Element::new("div", vec![], dom);
+        let dom = seperate_html_elements(dom);
+        let dom = sort_html_elements(dom);
+        let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
 
-    let dom = get_old_code(&spans);
-    set_old_code(spans);
+        let dom = get_markdown(&spans);
+        set_markdown(spans);
+        println!("{:#?}", dom);
+        dom
+    } else {
+        let html = generate_html_from_code(&new_lines, extension)?;
+        let html = replace_senstive_chars(html);
 
-    return Ok(dom);
+        let dom = parse(&html).unwrap_or_default();
+        let dom = wrap_with_id_spans(dom, 0, "-2:-1".to_string());
+        let dom = Element::new("div", vec![], dom);
+        let dom = seperate_html_elements(dom);
+        let dom = sort_html_elements(dom);
+        let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
+
+        let dom = get_old_code(&spans);
+        set_old_code(spans);
+        dom
+    };
+
+    return Ok(result);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

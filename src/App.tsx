@@ -1,8 +1,4 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-} from "solid-js";
+import { createEffect, createMemo, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api";
 import { open } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -30,57 +26,106 @@ async function read_file(path: Option<string>) {
   if (!path) {
     return [];
   }
-  try {
-    const spans = await invoke<["1" | "-1",string][]>(
-      "read_file",
-      { path },
-    );
-    const div = document.createElement("div");
-    const elements = spans.map(([ord,span]) => {
-      div.innerHTML = span;
-      return [ord ,div.firstChild]  as ["1"|"-1",HTMLSpanElement];
-    })
-    let timer = 0;
-    const TIMER_FACTOR = 2
+  const is_markdown = path.split(".").pop() === "md";
+
+  const spans = await invoke<["1" | "-1", string][]>(
+    "read_file",
+    { path },
+  );
+  const div = document.createElement("div");
+  const elements = spans.map(([ord, span]) => {
+    div.innerHTML = span;
+    return [ord, div.firstChild] as ["1" | "-1", HTMLSpanElement];
+  });
+  let timer = 0;
+  const TIMER_FACTOR = 2;
+  if (is_markdown) {
     for (const [ord,element] of elements) {
       const id = element.id;
-      const [gp,family] = id.split('@');
-      const [generation,position] = gp.split(':').map(x => +x);
-      const family_len = family.split(':').length;
+      const [gp, family] = id.split("@");
+      const [generation, position] = gp.split(":").map((x) => +x);
+      const family_len = family.split(":").length;
       timer = timer + (generation + position + family_len * 6) * TIMER_FACTOR;
-        if(ord === "1") {
-          setTimeout(() => {
-              const ele = document.getElementById(id);
-              if(ele) {
-                ele.replaceWith(element);
-              } else {
-                const older_brother = document.getElementById(get_older_brother_id(id));
-                if(older_brother) {
-                  older_brother.insertAdjacentElement("afterend",element);
-                } else {
-                  document.getElementById(get_father_id(id))?.insertAdjacentElement("beforeend",element);
-                }
-              }
-          },timer);
-        }
-        if(ord === "-1") {
-          const target = document.getElementById(id);
-          target?.setAttribute("style",`
-            opacity : 0.33;
-          `);
-          if (remember_mode()) {
-            setTimeout(() => {
-              target?.remove();
-            },timer);
+      if (ord === "1") {
+        setTimeout(() => {
+          const ele = document.getElementById(id);
+          if (ele) {
+            ele.replaceWith(element);
+          } else {
+            const older_brother = document.getElementById(
+              get_older_brother_id(id),
+            );
+            if (older_brother) {
+              older_brother.insertAdjacentElement("afterend", element);
+            } else {
+              document.getElementById(get_father_id(id))?.insertAdjacentElement(
+                "beforeend",
+                element,
+              );
+            }
           }
+        },timer)
+      } else if (ord === "-1") {
+        const target = document.getElementById(id);
+        target?.setAttribute(
+          "style",
+          `
+          opacity : 0.33;
+        `,
+        );
+        if (remember_mode()) {
+          setTimeout(() => {
+            target?.remove();
+          },timer)
         }
+      }
     }
-  } catch (_err) {
-    return [];
+  } else {
+    for (const [ord, element] of elements) {
+      const id = element.id;
+      const [gp, family] = id.split("@");
+      const [generation, position] = gp.split(":").map((x) => +x);
+      const family_len = family.split(":").length;
+      timer = timer + (generation + position + family_len * 6) * TIMER_FACTOR;
+      if (ord === "1") {
+        setTimeout(() => {
+          const ele = document.getElementById(id);
+          if (ele) {
+            ele.replaceWith(element);
+          } else {
+            const older_brother = document.getElementById(
+              get_older_brother_id(id),
+            );
+            if (older_brother) {
+              older_brother.insertAdjacentElement("afterend", element);
+            } else {
+              document.getElementById(get_father_id(id))?.insertAdjacentElement(
+                "beforeend",
+                element,
+              );
+            }
+          }
+        }, timer);
+      }
+      if (ord === "-1") {
+        const target = document.getElementById(id);
+        target?.setAttribute(
+          "style",
+          `
+          opacity : 0.33;
+        `,
+        );
+        if (remember_mode()) {
+          setTimeout(() => {
+            target?.remove();
+          }, timer);
+        }
+      }
+    }
   }
 }
 
-const [remember_mode,set_remember_mode] = createSignal(false);
+const [remember_mode, set_remember_mode] = createSignal(false);
 
 const [opened_folder, set_opened_folder] = createSignal<Option<string>>(null);
 const [folder_config, set_folder_config] = createSignal<Option<Config>>(null);
@@ -99,13 +144,13 @@ const lessons_keys = createMemo((_) => {
 const last_lesson_index = createMemo((_) => lessons_keys().length - 1);
 const [current_lesson_index, set_current_lesson_index] = createSignal(0);
 
-listen("remember_toggle",() => {
-  if(remember_mode()) {
+listen("remember_toggle", () => {
+  if (remember_mode()) {
     set_remember_mode(false);
   } else {
     set_remember_mode(true);
   }
-})
+});
 
 listen("next_snippet", () =>
   set_current_lesson_index((index) => {
@@ -184,21 +229,20 @@ createEffect(() =>
   ROOT_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
 );
 
-function get_father_id(id : string) {
-  const [gp,family_name] = id.split('@');
-  const [generation] = gp.split(':');
-  const family_members = family_name.split(':');
+function get_father_id(id: string) {
+  const [gp, family_name] = id.split("@");
+  const [generation] = gp.split(":");
+  const family_members = family_name.split(":");
   const father_position = family_members.pop();
-  return `${+generation - 1 }:${father_position}@${family_members.join(':')}`;
+  return `${+generation - 1}:${father_position}@${family_members.join(":")}`;
 }
 
-function get_older_brother_id(id : string) {
-  const [gp,family_name] = id.split('@');
-  const [generation,position] = gp.split(':');
+function get_older_brother_id(id: string) {
+  const [gp, family_name] = id.split("@");
+  const [generation, position] = gp.split(":");
   let older_brother_position = +position;
   return `${generation}:${older_brother_position - 1}@${family_name}`;
 }
-
 
 function App() {
   createEffect(() => {
