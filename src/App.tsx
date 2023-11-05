@@ -40,7 +40,7 @@ async function read_file(path: Option<string>) {
   let timer = 0;
   const TIMER_FACTOR = 2;
   if (is_markdown) {
-    for (const [ord,element] of elements) {
+    for (const [ord, element] of elements) {
       const id = element.id;
       const [gp, family] = id.split("@");
       const [generation, position] = gp.split(":").map((x) => +x);
@@ -64,7 +64,7 @@ async function read_file(path: Option<string>) {
               );
             }
           }
-        },timer)
+        }, timer);
       } else if (ord === "-1") {
         const target = document.getElementById(id);
         target?.setAttribute(
@@ -76,7 +76,7 @@ async function read_file(path: Option<string>) {
         if (remember_mode()) {
           setTimeout(() => {
             target?.remove();
-          },timer)
+          }, timer);
         }
       }
     }

@@ -45,6 +45,31 @@ fn wrap_with_id_spans(nodes: Vec<Node>, genration: usize, family: String) -> Vec
                         format!("{genration}:{index}@{family}"),
                     )])
                     .collect::<Vec<_>>();
+                if element.name == "pre" {
+                    element.attrs = element
+                        .attrs
+                        .into_iter()
+                        .filter(|x| x.0 != "class")
+                        .chain(vec![("class".to_string(), "code".to_string())])
+                        .collect::<Vec<_>>();
+                    if let Some((Some((_, language)), code)) = element
+                        .children
+                        .first()
+                        .and_then(|x| x.as_element())
+                        .map(|x| (x.attrs.first().cloned(), x.children.clone()))
+                    {
+                        if let [Node::Text(code)] = &code[..] {
+                            let language = language.split('-').last().unwrap_or_default();
+                            let (first, else_letters) = language.split_at(1);
+                            let first = first.to_uppercase();
+                            let language = first + else_letters;
+                            if let Ok(code) = generate_html_from_code(code, &language) {
+                                let code = parse(&code).unwrap_or_default();
+                                element.children = code;
+                            };
+                        }
+                    };
+                }
                 element.children = wrap_with_id_spans(
                     element.children,
                     genration + 1,
@@ -62,7 +87,7 @@ fn wrap_with_id_spans(nodes: Vec<Node>, genration: usize, family: String) -> Vec
 }
 
 fn seperate_html_elements(ele: Element) -> Vec<Element> {
-    ele.query_all(&Selector::from("span,h1,h2,h3,h4,h5,h6,pre,li,ul,a"))
+    ele.query_all(&Selector::from("span,h1,h2,h3,h4,h5,h6,pre,li,ul,a,code"))
         .into_iter()
         .map(|x| {
             let mut y = x.clone();
@@ -144,14 +169,19 @@ fn open_config(path: &str) -> Result<Config, String> {
     open(path).map_err(|x| x.to_string())
 }
 
-fn generate_html_from_code(code_rs: &str, extension: &str) -> Result<String, String> {
+fn generate_html_from_code(code: &str, name: &str) -> Result<String, String> {
     let ss = SyntaxSet::load_defaults_newlines();
-    let Some(sr_rs) = ss.find_syntax_by_extension(extension) else {
-        return Err("syntax does not exist".to_string());
+    let sr_rs = ss.find_syntax_by_name(name);
+    let sr_rs = match sr_rs {
+        Some(s) => s,
+        None => match ss.find_syntax_by_extension(name) {
+            Some(s) => s,
+            None => return Err("syntax does not exist".to_string()),
+        },
     };
     let mut rs_html_generator =
         ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
-    for line in LinesWithEndings::from(code_rs) {
+    for line in LinesWithEndings::from(code) {
         rs_html_generator
             .parse_html_for_line_which_includes_newline(line)
             .unwrap_or_default();
@@ -208,7 +238,7 @@ fn get_markdown<'a>(markdown: &Vec<String>) -> Vec<(String, String)> {
     }
 }
 
-const NEW_LINE: &str = "*#%NEW_LINE%#*";
+const NEW_LINE: &str = "THENEWLINESYMPOLE";
 
 fn set_old_code(new_lines: Vec<String>) {
     unsafe { CODE_OLD_LINES = new_lines }
@@ -239,18 +269,16 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
         Ok(content)
     }
 
-    fn replace_senstive_chars(html : String) -> String {
-        let html = html.replace("\\\"", "\"");
-        let html = html.replace("\\n", NEW_LINE);
-        html.replace("\n", NEW_LINE)
+    fn replace_new_lines(html: String) -> String {
+        html.replace("\\n", NEW_LINE).replace("\n", NEW_LINE)
     }
 
     let new_lines = open(path).unwrap_or_default();
 
     let result = if is_markdown {
         let html = markdown::to_html(&new_lines);
-        println!("{:#?}", html);
-        let html = replace_senstive_chars(html);
+        let html = replace_new_lines(html);
+        let html = html.replace("&quot;", "\"");
 
         let dom = parse(&html).unwrap_or_default();
         let dom = wrap_with_id_spans(dom, 0, "-1:-1".to_string());
@@ -261,11 +289,10 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
 
         let dom = get_markdown(&spans);
         set_markdown(spans);
-        println!("{:#?}", dom);
         dom
     } else {
         let html = generate_html_from_code(&new_lines, extension)?;
-        let html = replace_senstive_chars(html);
+        let html = replace_new_lines(html);
 
         let dom = parse(&html).unwrap_or_default();
         let dom = wrap_with_id_spans(dom, 0, "-2:-1".to_string());
