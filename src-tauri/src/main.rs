@@ -1,11 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#![feature(iter_intersperse)]
 use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
 };
-use tauri::Manager;
+use tauri::{Manager, State};
 
 use std::{cmp::Ordering, collections::HashMap, fs::File, io::Read};
 
@@ -29,132 +28,200 @@ struct Config {
 use html_editor::{operation::*, Element};
 use html_editor::{parse, Node};
 
-fn wrap_with_id_spans(nodes: Vec<Node>, genration: usize, family: String) -> Vec<Node> {
+trait ElementExtra {
+    fn container(nodes: Vec<Node>) -> Self;
+    fn get_attirbute(&self, attr: &str) -> Option<&String>;
+    fn get_id(&self) -> Option<&String>;
+    fn split_id(&self) -> Option<(i32, i32, Vec<&str>)>;
+    fn are_childern_code(&self) -> Option<(&str, &String)>;
+    fn code_children(&mut self, syntaxt_set: &SyntaxSet);
+    fn seperate_html_elements(&mut self) -> &mut Self;
+    fn sort_html_elements(&mut self) -> Self;
+    fn to_html(self) -> Vec<String>;
+}
+
+impl ElementExtra for Element {
+    fn get_attirbute(&self, attr: &str) -> Option<&String> {
+        self.attrs
+            .iter()
+            .filter(|(head, _)| head == attr)
+            .map(|(_, value)| value)
+            .nth(0)
+    }
+
+    #[inline(always)]
+    fn get_id(&self) -> Option<&String> {
+        self.get_attirbute("id")
+    }
+
+    fn split_id(&self) -> Option<(i32, i32, Vec<&str>)> {
+        let Some(id) = self.get_id() else {
+            return None;
+        };
+        let [ps, family, ..] = id.split('@').collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        let [generation, index, ..] = ps
+            .split(':')
+            .flat_map(|x| x.parse::<i32>())
+            .collect::<Vec<_>>()[..]
+        else {
+            return None;
+        };
+        let family = family.split(':').collect::<Vec<_>>();
+        Some((generation, index, family))
+    }
+
+    fn are_childern_code(&self) -> Option<(&str, &String)> {
+        if self.name != "pre" {
+            return None;
+        }
+        let [one_node] = &self.children[..] else {
+            return None;
+        };
+        let element = match one_node {
+            Node::Element(element) => element,
+            _ => return None,
+        };
+        if element.name != "code" {
+            return None;
+        }
+        let Some(language) = element
+            .get_attirbute("class")
+            .and_then(|x| x.split('-').last())
+        else {
+            return None;
+        };
+        let [Node::Text(code)] = &element.children[..] else {
+            return None;
+        };
+        Some((language, code))
+    }
+
+    fn code_children(&mut self, syntax_set: &SyntaxSet) {
+        let Some((language, code)) = self.are_childern_code() else {
+            return;
+        };
+        let attrs = self
+            .attrs
+            .iter()
+            .filter(|x| x.0 != "class")
+            .chain(&vec![(String::from("class"), String::from("code"))])
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let Ok(code) = generate_html_from_code(code, language, syntax_set) else {
+            return;
+        };
+        let children = parse(&code).unwrap_or_default();
+        self.children = children;
+        self.attrs = attrs;
+    }
+
+    fn seperate_html_elements(&mut self) -> &mut Self {
+        let mapping = |element: Element| {
+            if element
+                .children
+                .iter()
+                .any(|node| matches!(node, Node::Element(_)))
+            {
+                Element {
+                    children: vec![],
+                    ..element
+                }
+                .into_node()
+            } else {
+                element.into_node()
+            }
+        };
+        self.children = self
+            .query_all(&Selector::from(HTML_TYPES))
+            .into_iter()
+            .cloned()
+            .map(mapping)
+            .collect::<Vec<_>>();
+        self
+    }
+
+    fn sort_html_elements(&mut self) -> Self {
+        let comparing = |x: &&Node, y: &&Node| {
+            let (Some(x), Some(y)) = (x.as_element(), y.as_element()) else {
+                return Ordering::Equal;
+            };
+            let (Some((x_generation, x_index, x_family)), Some((y_generation, y_index, y_family))) =
+                (x.split_id(), y.split_id())
+            else {
+                return Ordering::Equal;
+            };
+
+            let x_family = x_family.len();
+            let y_family = y_family.len();
+
+            if x_family.cmp(&y_family) != Ordering::Equal {
+                x_family.cmp(&y_family)
+            } else if x_generation.cmp(&y_generation) != Ordering::Equal {
+                x_generation.cmp(&y_generation)
+            } else {
+                x_index.cmp(&y_index)
+            }
+        };
+        self.children = self.children.iter().sorted_by(comparing).cloned().collect();
+        self.to_owned()
+    }
+
+    fn to_html(self) -> Vec<String> {
+        self.children
+            .into_iter()
+            .map(|x| x.html())
+            .collect::<Vec<_>>()
+    }
+
+    fn container(nodes: Vec<Node>) -> Self {
+        Element::new("FakeElement", vec![], nodes)
+    }
+}
+
+fn wrap_with_id_spans(
+    nodes: Vec<Node>,
+    genration: usize,
+    family: String,
+    syntax_set: &SyntaxSet,
+) -> Vec<Node> {
+    let mapping = |(index, node)| match node {
+        Node::Element(ele) => {
+            let mut element = ele;
+            element.attrs = element
+                .attrs
+                .into_iter()
+                .filter(|x| x.0 != "id")
+                .chain(vec![(
+                    "id".to_string(),
+                    format!("{genration}:{index}@{family}"),
+                )])
+                .collect::<Vec<_>>();
+            element.code_children(syntax_set);
+            element.children = wrap_with_id_spans(
+                element.children,
+                genration + 1,
+                format!("{}:{}", family, index),
+                syntax_set,
+            );
+            element.into_node()
+        }
+        _ => Node::Element(Element::new(
+            "span",
+            vec![("id", format!("{genration}:{index}@{family}").as_str())],
+            vec![node],
+        )),
+    };
     nodes
         .into_iter()
         .enumerate()
-        .map(|(index, node)| match node {
-            Node::Element(ele) => {
-                let mut element = ele;
-                element.attrs = element
-                    .attrs
-                    .into_iter()
-                    .filter(|x| x.0 != "id")
-                    .chain(vec![(
-                        "id".to_string(),
-                        format!("{genration}:{index}@{family}"),
-                    )])
-                    .collect::<Vec<_>>();
-                if element.name == "pre" {
-                    element.attrs = element
-                        .attrs
-                        .into_iter()
-                        .filter(|x| x.0 != "class")
-                        .chain(vec![("class".to_string(), "code".to_string())])
-                        .collect::<Vec<_>>();
-                    if let Some((Some((_, language)), code)) = element
-                        .children
-                        .first()
-                        .and_then(|x| x.as_element())
-                        .map(|x| (x.attrs.first().cloned(), x.children.clone()))
-                    {
-                        if let [Node::Text(code)] = &code[..] {
-                            let language = language.split('-').last().unwrap_or_default();
-                            let (first, else_letters) = language.split_at(1);
-                            let first = first.to_uppercase();
-                            let language = first + else_letters;
-                            if let Ok(code) = generate_html_from_code(code, &language) {
-                                let code = parse(&code).unwrap_or_default();
-                                element.children = code;
-                            };
-                        }
-                    };
-                }
-                element.children = wrap_with_id_spans(
-                    element.children,
-                    genration + 1,
-                    format!("{}:{}", family, index),
-                );
-                element.into_node()
-            }
-            _ => Node::Element(Element::new(
-                "span",
-                vec![("id", format!("{genration}:{index}@{family}").as_str())],
-                vec![node],
-            )),
-        })
+        .map(mapping)
         .collect::<Vec<_>>()
 }
 
-fn seperate_html_elements(ele: Element) -> Vec<Element> {
-    ele.query_all(&Selector::from("span,h1,h2,h3,h4,h5,h6,pre,li,ul,a,code"))
-        .into_iter()
-        .map(|x| {
-            let mut y = x.clone();
-            if y.children.iter().any(|x| matches!(x, Node::Element(_))) {
-                y.children = vec![];
-            }
-            y
-        })
-        .collect::<Vec<_>>()
-}
-
-fn sort_html_elements(elements: Vec<Element>) -> Vec<Element> {
-    elements
-        .into_iter()
-        .sorted_by(|x, y| {
-            let xid = x
-                .attrs
-                .iter()
-                .filter(|(head, _)| head == "id")
-                .map(|(_, value)| value)
-                .collect::<Vec<_>>();
-            let xid = xid.first();
-            let yid = y
-                .attrs
-                .iter()
-                .filter(|(head, _)| head == "id")
-                .map(|(_, value)| value)
-                .collect::<Vec<_>>();
-            let yid = yid.first();
-            let (Some(xid), Some(yid)) = (xid, yid) else {
-                return Ordering::Equal;
-            };
-            let [xid, x_family, ..] = xid.split('@').collect::<Vec<_>>()[..] else {
-                return Ordering::Equal;
-            };
-            let [yid, y_family, ..] = yid.split('@').collect::<Vec<_>>()[..] else {
-                return Ordering::Equal;
-            };
-
-            let [x_generation, x_index] = xid
-                .split(':')
-                .flat_map(|x| x.parse::<i32>())
-                .collect::<Vec<_>>()[..]
-            else {
-                return Ordering::Equal;
-            };
-            let [y_generation, y_index] = yid
-                .split(':')
-                .flat_map(|x| x.parse::<i32>())
-                .collect::<Vec<_>>()[..]
-            else {
-                return Ordering::Equal;
-            };
-
-            let x_family = x_family.split(':').count();
-            let y_family = y_family.split(':').count();
-
-            if x_family.cmp(&y_family) != Ordering::Equal {
-                return x_family.cmp(&y_family);
-            } else if x_generation.cmp(&y_generation) != Ordering::Equal {
-                return x_generation.cmp(&y_generation);
-            } else {
-                return x_index.cmp(&y_index);
-            }
-        })
-        .collect()
-}
+const HTML_TYPES: &str = "span,pre,li,ul,ol,a,div,h1,h2,h3,h4,h5,h6,section,code";
 
 #[tauri::command]
 fn open_config(path: &str) -> Result<Config, String> {
@@ -169,18 +236,24 @@ fn open_config(path: &str) -> Result<Config, String> {
     open(path).map_err(|x| x.to_string())
 }
 
-fn generate_html_from_code(code: &str, name: &str) -> Result<String, String> {
-    let ss = SyntaxSet::load_defaults_newlines();
-    let sr_rs = ss.find_syntax_by_name(name);
-    let sr_rs = match sr_rs {
+fn generate_html_from_code(
+    code: &str,
+    name: &str,
+    syntaxt_set: &SyntaxSet,
+) -> Result<String, String> {
+    let (first, else_letters) = name.split_at(1);
+    let first = first.to_uppercase();
+    let language_name = first + else_letters;
+    let syntax_ref = syntaxt_set.find_syntax_by_name(&language_name);
+    let syntax_ref = match syntax_ref {
         Some(s) => s,
-        None => match ss.find_syntax_by_extension(name) {
+        None => match syntaxt_set.find_syntax_by_extension(name) {
             Some(s) => s,
             None => return Err("syntax does not exist".to_string()),
         },
     };
     let mut rs_html_generator =
-        ClassedHTMLGenerator::new_with_class_style(sr_rs, &ss, ClassStyle::Spaced);
+        ClassedHTMLGenerator::new_with_class_style(syntax_ref, syntaxt_set, ClassStyle::Spaced);
     for line in LinesWithEndings::from(code) {
         rs_html_generator
             .parse_html_for_line_which_includes_newline(line)
@@ -193,11 +266,13 @@ static mut CODE_OLD_LINES: Vec<String> = Vec::new();
 static mut MARKDOWN_LINES: Vec<String> = Vec::new();
 
 #[inline(always)]
-fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
+fn get_old_code(new_code: &[String]) -> Vec<(String, String)> {
     unsafe {
-        let lines1 = Itertools::intersperse(CODE_OLD_LINES.clone().into_iter(), "\n".to_string())
+        let lines1 = Itertools::intersperse(CODE_OLD_LINES.iter(), &"\n".to_string())
+            .cloned()
             .collect::<String>();
-        let lines2 = Itertools::intersperse(new_code.to_owned().into_iter(), "\n".to_string())
+        let lines2 = Itertools::intersperse(new_code.iter(), &"\n".to_string())
+            .cloned()
             .collect::<String>();
         let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
             .into_iter()
@@ -216,11 +291,12 @@ fn get_old_code<'a>(new_code: &Vec<String>) -> Vec<(String, String)> {
 }
 
 #[inline(always)]
-fn get_markdown<'a>(markdown: &Vec<String>) -> Vec<(String, String)> {
+fn get_markdown(markdown: &[String]) -> Vec<(String, String)> {
     unsafe {
         let lines1 = Itertools::intersperse(MARKDOWN_LINES.clone().into_iter(), "\n".to_string())
             .collect::<String>();
-        let lines2 = Itertools::intersperse(markdown.to_owned().into_iter(), "\n".to_string())
+        let lines2 = Itertools::intersperse(markdown.iter(), &"\n".to_string())
+            .cloned()
             .collect::<String>();
         let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
             .into_iter()
@@ -249,7 +325,10 @@ fn set_markdown(new_lines: Vec<String>) {
 }
 
 #[tauri::command]
-fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
+fn read_file(
+    syntax_set: State<'_, SyntaxSet>,
+    path: &str,
+) -> Result<Vec<(String, String)>, String> {
     let Some(name_exten) = std::path::Path::new(path)
         .file_name()
         .and_then(|x| x.to_str().map(|x| x.split('.')))
@@ -270,7 +349,7 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
     }
 
     fn replace_new_lines(html: String) -> String {
-        html.replace("\\n", NEW_LINE).replace("\n", NEW_LINE)
+        html.replace("\\n", NEW_LINE).replace('\n', NEW_LINE)
     }
 
     let new_lines = open(path).unwrap_or_default();
@@ -281,32 +360,28 @@ fn read_file(path: &str) -> Result<Vec<(String, String)>, String> {
         let html = html.replace("&quot;", "\"");
 
         let dom = parse(&html).unwrap_or_default();
-        let dom = wrap_with_id_spans(dom, 0, "-1:-1".to_string());
-        let dom = Element::new("div", vec![], dom);
-        let dom = seperate_html_elements(dom);
-        let dom = sort_html_elements(dom);
-        let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
+        let dom = wrap_with_id_spans(dom, 0, "-1:-1".to_string(), syntax_set.inner());
+        let mut dom = Element::container(dom);
+        let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
         let dom = get_markdown(&spans);
         set_markdown(spans);
         dom
     } else {
-        let html = generate_html_from_code(&new_lines, extension)?;
+        let html = generate_html_from_code(&new_lines, extension, &syntax_set)?;
         let html = replace_new_lines(html);
 
         let dom = parse(&html).unwrap_or_default();
-        let dom = wrap_with_id_spans(dom, 0, "-2:-1".to_string());
-        let dom = Element::new("div", vec![], dom);
-        let dom = seperate_html_elements(dom);
-        let dom = sort_html_elements(dom);
-        let spans = dom.into_iter().map(|x| x.html()).collect::<Vec<_>>();
+        let dom = wrap_with_id_spans(dom, 0, "-2:-1".to_string(), &syntax_set);
+        let mut dom = Element::container(dom);
+        let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
         let dom = get_old_code(&spans);
         set_old_code(spans);
         dom
     };
 
-    return Ok(result);
+    Ok(result)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -332,6 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         remember_toggle,
     ])?;
 
+    let syntax_set = SyntaxSet::load_defaults_newlines();
     tauri::Builder::default()
         .setup(move |app| {
             let main_window = app.get_window("main").unwrap();
@@ -358,6 +434,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
             Ok(())
         })
+        .manage(syntax_set)
         .invoke_handler(tauri::generate_handler![open_config, read_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

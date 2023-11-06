@@ -240,7 +240,7 @@ function get_father_id(id: string) {
 function get_older_brother_id(id: string) {
   const [gp, family_name] = id.split("@");
   const [generation, position] = gp.split(":");
-  let older_brother_position = +position;
+  const older_brother_position = +position;
   return `${generation}:${older_brother_position - 1}@${family_name}`;
 }
 
