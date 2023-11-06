@@ -262,7 +262,6 @@ fn generate_html_from_code(
     Ok(rs_html_generator.finalize())
 }
 
-
 const NEW_LINE: &str = "THENEWLINESYMPOLE";
 
 #[tauri::command]
@@ -306,9 +305,7 @@ fn read_file(
         let mut dom = Element::container(dom);
         let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
-        let dom = state.get_markdown(&spans);
-        state.set_markdown(spans.clone());
-        dom
+        state.compare_markdown(spans)
     } else {
         let html = generate_html_from_code(&new_lines, extension, &syntax_set)?;
         let html = replace_new_lines(html);
@@ -318,9 +315,7 @@ fn read_file(
         let mut dom = Element::container(dom);
         let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
-        let dom = state.get_old_code(&spans);
-        state.set_old_code(spans.clone());
-        dom
+        state.compare_code(spans)
     };
 
     Ok(result)
@@ -349,7 +344,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         remember_toggle,
     ])?;
 
-    let state = AppState{
+    let state = AppState {
         code: Mutex::new(vec![]),
         markdown: Mutex::new(vec![]),
     };
@@ -390,22 +385,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-struct AppState{
-    code :Mutex<Vec<String>>,
-    markdown :Mutex<Vec<String>>,
+struct AppState {
+    code: Mutex<Vec<String>>,
+    markdown: Mutex<Vec<String>>,
 }
 
 impl AppState {
-    fn set_old_code(&self,spans : Vec<String>) {
+    #[inline(always)]
+    fn compare_markdown(&self, markdown: Vec<String>) -> Vec<(String, String)> {
+        let new_markdown = self.get_markdown(&markdown);
+        self.set_markdown(markdown);
+        new_markdown
+    }
+    #[inline(always)]
+    fn compare_code(&self, code: Vec<String>) -> Vec<(String, String)> {
+        let new_code = self.get_old_code(&code);
+        self.set_old_code(code);
+        new_code
+    }
+    fn set_old_code(&self, spans: Vec<String>) {
         *self.code.lock().unwrap() = spans;
     }
-    fn set_markdown(&self,spans : Vec<String>) {
+    fn set_markdown(&self, spans: Vec<String>) {
         *self.markdown.lock().unwrap() = spans;
     }
 
-    fn get_markdown(&self,markdown: &[String]) -> Vec<(String, String)> {
-        let lines = self.markdown.lock().unwrap();
-        let lines1 = Itertools::intersperse(lines.clone().into_iter(), "\n".to_string())
+    fn get_markdown(&self, markdown: &[String]) -> Vec<(String, String)> {
+        let old_markdown = self.markdown.lock().unwrap();
+        let lines1 = Itertools::intersperse(old_markdown.clone().into_iter(), "\n".to_string())
             .collect::<String>();
         let lines2 = Itertools::intersperse(markdown.iter(), &"\n".to_string())
             .cloned()
@@ -425,9 +432,9 @@ impl AppState {
         diffs
     }
 
-    fn get_old_code(&self,new_code: &[String]) -> Vec<(String, String)> {
-        let lines = self.code.lock().unwrap();
-        let lines1 = Itertools::intersperse(lines.iter(), &"\n".to_string())
+    fn get_old_code(&self, new_code: &[String]) -> Vec<(String, String)> {
+        let old_code = self.code.lock().unwrap();
+        let lines1 = Itertools::intersperse(old_code.iter(), &"\n".to_string())
             .cloned()
             .collect::<String>();
         let lines2 = Itertools::intersperse(new_code.iter(), &"\n".to_string())
