@@ -6,7 +6,7 @@ use global_hotkey::{
 };
 use tauri::{Manager, State};
 
-use std::{cmp::Ordering, collections::HashMap, fs::File, io::Read};
+use std::{cmp::Ordering, collections::HashMap, fs::File, io::Read, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -262,71 +262,13 @@ fn generate_html_from_code(
     Ok(rs_html_generator.finalize())
 }
 
-static mut CODE_OLD_LINES: Vec<String> = Vec::new();
-static mut MARKDOWN_LINES: Vec<String> = Vec::new();
-
-#[inline(always)]
-fn get_old_code(new_code: &[String]) -> Vec<(String, String)> {
-    unsafe {
-        let lines1 = Itertools::intersperse(CODE_OLD_LINES.iter(), &"\n".to_string())
-            .cloned()
-            .collect::<String>();
-        let lines2 = Itertools::intersperse(new_code.iter(), &"\n".to_string())
-            .cloned()
-            .collect::<String>();
-        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
-            .into_iter()
-            .flat_map(|(tag, str)| match tag {
-                ChangeTag::Delete => {
-                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
-                }
-                ChangeTag::Insert => {
-                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
-                }
-                ChangeTag::Equal => None,
-            })
-            .collect::<Vec<_>>();
-        diffs
-    }
-}
-
-#[inline(always)]
-fn get_markdown(markdown: &[String]) -> Vec<(String, String)> {
-    unsafe {
-        let lines1 = Itertools::intersperse(MARKDOWN_LINES.clone().into_iter(), "\n".to_string())
-            .collect::<String>();
-        let lines2 = Itertools::intersperse(markdown.iter(), &"\n".to_string())
-            .cloned()
-            .collect::<String>();
-        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
-            .into_iter()
-            .flat_map(|(tag, str)| match tag {
-                ChangeTag::Delete => {
-                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
-                }
-                ChangeTag::Insert => {
-                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
-                }
-                ChangeTag::Equal => None,
-            })
-            .collect::<Vec<_>>();
-        diffs
-    }
-}
 
 const NEW_LINE: &str = "THENEWLINESYMPOLE";
-
-fn set_old_code(new_lines: Vec<String>) {
-    unsafe { CODE_OLD_LINES = new_lines }
-}
-
-fn set_markdown(new_lines: Vec<String>) {
-    unsafe { MARKDOWN_LINES = new_lines }
-}
 
 #[tauri::command]
 fn read_file(
     syntax_set: State<'_, SyntaxSet>,
+    state: State<'_, AppState>,
     path: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let Some(name_exten) = std::path::Path::new(path)
@@ -364,8 +306,8 @@ fn read_file(
         let mut dom = Element::container(dom);
         let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
-        let dom = get_markdown(&spans);
-        set_markdown(spans);
+        let dom = state.get_markdown(&spans);
+        state.set_markdown(spans.clone());
         dom
     } else {
         let html = generate_html_from_code(&new_lines, extension, &syntax_set)?;
@@ -376,8 +318,8 @@ fn read_file(
         let mut dom = Element::container(dom);
         let spans = dom.seperate_html_elements().sort_html_elements().to_html();
 
-        let dom = get_old_code(&spans);
-        set_old_code(spans);
+        let dom = state.get_old_code(&spans);
+        state.set_old_code(spans.clone());
         dom
     };
 
@@ -407,6 +349,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         remember_toggle,
     ])?;
 
+    let state = AppState{
+        code: Mutex::new(vec![]),
+        markdown: Mutex::new(vec![]),
+    };
+
     let syntax_set = SyntaxSet::load_defaults_newlines();
     tauri::Builder::default()
         .setup(move |app| {
@@ -435,9 +382,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         })
         .manage(syntax_set)
+        .manage(state)
         .invoke_handler(tauri::generate_handler![open_config, read_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 
     Ok(())
+}
+
+struct AppState{
+    code :Mutex<Vec<String>>,
+    markdown :Mutex<Vec<String>>,
+}
+
+impl AppState {
+    fn set_old_code(&self,spans : Vec<String>) {
+        *self.code.lock().unwrap() = spans;
+    }
+    fn set_markdown(&self,spans : Vec<String>) {
+        *self.markdown.lock().unwrap() = spans;
+    }
+
+    fn get_markdown(&self,markdown: &[String]) -> Vec<(String, String)> {
+        let lines = self.markdown.lock().unwrap();
+        let lines1 = Itertools::intersperse(lines.clone().into_iter(), "\n".to_string())
+            .collect::<String>();
+        let lines2 = Itertools::intersperse(markdown.iter(), &"\n".to_string())
+            .cloned()
+            .collect::<String>();
+        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
+            .into_iter()
+            .flat_map(|(tag, str)| match tag {
+                ChangeTag::Delete => {
+                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Insert => {
+                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Equal => None,
+            })
+            .collect::<Vec<_>>();
+        diffs
+    }
+
+    fn get_old_code(&self,new_code: &[String]) -> Vec<(String, String)> {
+        let lines = self.code.lock().unwrap();
+        let lines1 = Itertools::intersperse(lines.iter(), &"\n".to_string())
+            .cloned()
+            .collect::<String>();
+        let lines2 = Itertools::intersperse(new_code.iter(), &"\n".to_string())
+            .cloned()
+            .collect::<String>();
+        let diffs = diff_lines(Algorithm::Myers, &lines1, &lines2)
+            .into_iter()
+            .flat_map(|(tag, str)| match tag {
+                ChangeTag::Delete => {
+                    Some(("-1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Insert => {
+                    Some(("1".to_string(), str.replace(NEW_LINE, "\n").to_string()))
+                }
+                ChangeTag::Equal => None,
+            })
+            .collect::<Vec<_>>();
+        diffs
+    }
 }
