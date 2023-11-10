@@ -12,8 +12,6 @@ type Config = {
 
 const CONFIG_NAME = "config.json";
 
-const ROOT_BLOCK = document.getElementById("root")!;
-
 async function opene_folder() {
   return await open({
     title: "choose lesson",
@@ -225,10 +223,6 @@ const current_lesson_path = createMemo((_) => {
   }
 });
 
-createEffect(() =>
-  ROOT_BLOCK.setAttribute("style", `font-size: ${font_size()}rem;`)
-);
-
 function get_father_id(id: string) {
   const [gp, family_name] = id.split("@");
   const [generation] = gp.split(":");
@@ -249,7 +243,20 @@ function App() {
     read_file(current_lesson_path());
   });
 
-  return <></>;
+  return <div style={{"font-size" : `${font_size()}rem`}}>
+      <Code/>
+      <Markdown/>
+    </div>;
+}
+
+function Code() {
+  
+  return <pre id="-1:-1@-2" class="code"></pre>
+}
+
+function Markdown() {
+  
+  return <pre id="-1:-1@-1"></pre>
 }
 
 export default App;

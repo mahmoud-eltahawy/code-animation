@@ -134,16 +134,11 @@ fn read_file(
         Ok(content)
     }
 
-    fn replace_new_lines(html: String) -> String {
-        html.replace("\\n", NEW_LINE).replace('\n', NEW_LINE)
-    }
-
     let new_lines = open(path).unwrap_or_default();
 
     let result = if is_markdown {
         let html = markdown::to_html(&new_lines);
-        let html = replace_new_lines(html);
-        let html = html.replace("&quot;", "\"");
+        let html = html.replace("&quot;", "\"").replace('\n', NEW_LINE);
 
         let dom = parse(&html).unwrap_or_default();
         let dom = wrap_with_id_spans(dom, 0, "-1:-1".to_string(), syntax_set.inner());
@@ -153,7 +148,7 @@ fn read_file(
         state.compare_markdown(spans)
     } else {
         let html = generate_html_from_code(&new_lines, extension, &syntax_set)?;
-        let html = replace_new_lines(html);
+        let html = html.replace('\n', NEW_LINE);
 
         let dom = parse(&html).unwrap_or_default();
         let dom = wrap_with_id_spans(dom, 0, "-2:-1".to_string(), &syntax_set);

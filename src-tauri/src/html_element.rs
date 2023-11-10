@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use html_editor::{operation::*, parse, Element, Node};
-use itertools::Itertools;
 use syntect::parsing::SyntaxSet;
 
 use crate::generate_html_from_code;
@@ -124,28 +123,14 @@ impl ElementExtra for Element {
     }
 
     fn sort_html_elements(&mut self) -> Self {
-        let comparing = |x: &&Node, y: &&Node| {
-            let (Some(x), Some(y)) = (x.as_element(), y.as_element()) else {
-                return Ordering::Equal;
-            };
-            let (Some((x_generation, x_index, x_family)), Some((y_generation, y_index, y_family))) =
-                (x.split_id(), y.split_id())
-            else {
-                return Ordering::Equal;
-            };
-
-            let x_family = x_family.len();
-            let y_family = y_family.len();
-
-            if x_family.cmp(&y_family) != Ordering::Equal {
-                x_family.cmp(&y_family)
-            } else if x_generation.cmp(&y_generation) != Ordering::Equal {
-                x_generation.cmp(&y_generation)
-            } else {
-                x_index.cmp(&y_index)
-            }
-        };
-        self.children = self.children.iter().sorted_by(comparing).cloned().collect();
+        let mut children = self.children.clone();
+        children.sort_by_key(|node| {
+            node.as_element()
+                .map(|element| element.split_id())
+                .flatten()
+                .map(|(x, y, z)| (z.len(),x, y))
+        });
+        self.children = children;
         self.to_owned()
     }
 
